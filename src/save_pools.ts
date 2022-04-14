@@ -26,7 +26,7 @@ async function main() {
   // console.log(pool);
 
   // process all pools from uniswapv2
-  await indexer.processAll(40400);
+  await indexer.processAll();
 
   await database.close();
 }
