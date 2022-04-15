@@ -59,39 +59,39 @@ export class UniswapV2Indexer {
     ).toNumber();
     logger.info(`total number of pairs: ${allPairsLength}`);
     const calls: Promise<Pool>[] = [];
-    // const allPools = [];
+    const allPools = [];
     for (let i = start; i < allPairsLength; ++i) {
       calls.push(this.processSingle.bind(this)(i, false));
       if (calls.length % this.chunkSize === 0) {
         let pools: Pool[] = [];
-          try{
-        await retry(
-          async () => {
-            pools = await Promise.all(calls);
-          },
-          {
-            retries: this.retries,
-            onRetry: (err, retry) => {
-              logger.warn(
-                `Failed request for page of pools from onchain due to ${err}. Retry attempt: ${retry}`
-              );
-                // reset
-                pools = []
+        try {
+          await retry(
+            async () => {
+              pools = await Promise.all(calls);
             },
-          }
-        );
-          }catch{
-              logger.error(`skip index from ${i-this.chunkSize+1}th -${i}th`);
-              continue;
-          }
+            {
+              retries: this.retries,
+              onRetry: (err, retry) => {
+                logger.warn(
+                  `Failed request for page of pools from onchain due to ${err}. Retry attempt: ${retry}`
+                );
+                // reset
+                pools = [];
+              },
+            }
+          );
+        } catch {
+          logger.error(`skip index from ${i - this.chunkSize + 1}th -${i}th`);
+          continue;
+        }
         if (save) {
           await this.database.saveMany(pools, this.collectionName);
         }
-        // allPools.push(...pools);
+        allPools.push(...pools);
         calls.length = 0;
-        logger.info(`processing the ${i+1}th new pool`);
+        logger.info(`processing the ${i + 1}th new pool`);
       }
     }
-    // return allPools;
+    return allPools;
   }
 }

@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 
-import { UniswapV2Indexer } from "./markets/uniswapv2";
+import { UniswapV2Indexer, BalancerV2Indexer } from "./markets";
 import { Database } from "./mongodb";
 import { Pool } from "./types";
 import * as dotenv from "dotenv";
@@ -16,14 +16,13 @@ async function main() {
   const database = new Database(process.env.DB_CONN_STRING as string);
   await database.initDB(process.env.DB_NAME as string);
 
-  const indexer = new UniswapV2Indexer(
-    provider,
-    database,
-    factoryAddr,
-    poolCollectionName
-  );
-  // const pool = await indexer.processSingle(0);
-  // console.log(pool);
+  // const indexer = new UniswapV2Indexer(
+    // provider,
+    // database,
+    // factoryAddr,
+    // poolCollectionName
+  // );
+  const indexer = new BalancerV2Indexer(database, poolCollectionName);
 
   // process all pools from uniswapv2
   await indexer.processAll();
