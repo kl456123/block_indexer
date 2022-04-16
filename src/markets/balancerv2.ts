@@ -1,8 +1,8 @@
 import { gql, GraphQLClient } from "graphql-request";
 import Timeout from "await-timeout";
 import retry from "async-retry";
-import  { Pool, Protocol } from '../types';
-import { logger } from '../logging';
+import { Pool, Protocol } from "../types";
+import { logger } from "../logging";
 import { Database } from "../mongodb";
 
 const BALANCERV2_SUBGRAPH_URL =
@@ -84,15 +84,15 @@ export class BalancerV2Indexer {
     return allPools;
   }
 
-    async processAll(){
-        const subgraphPools = await this.fetchPoolsFromSubgraph();
-        const pools: Pool[] = subgraphPools.map(subgraphPool=>({
-            protocol: Protocol.BalancerV2,
-            id: subgraphPool.id,
-            tokens: subgraphPool.tokens.map(token=>token.address),
-            reserves: subgraphPool.tokens.map(token=>token.balance),
-            reservesUSD: Array(subgraphPool.tokens.length).fill(''),
-        }));
-        await this.database.saveMany(pools, this.collectionName);
-    }
+  async processAll() {
+    const subgraphPools = await this.fetchPoolsFromSubgraph();
+    const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
+      protocol: Protocol.BalancerV2,
+      id: subgraphPool.id,
+      tokens: subgraphPool.tokens.map((token) => token.address),
+      reserves: subgraphPool.tokens.map((token) => token.balance),
+      reservesUSD: Array(subgraphPool.tokens.length).fill(""),
+    }));
+    await this.database.saveMany(pools, this.collectionName);
+  }
 }

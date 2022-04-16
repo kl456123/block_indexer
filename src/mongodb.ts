@@ -48,6 +48,7 @@ export class Database {
       { upsert: true }
     );
     if (result) {
+      logger.info(`poolId id of ${item.id} is successfully saved!`);
       return result.upsertedId;
     }
     return null;
@@ -57,6 +58,7 @@ export class Database {
     const collection = this.getCollection(name);
     const result = await collection.insertMany(items);
     if (result) {
+      logger.info(`${items.length} number of pools successfully saved!`);
       return result.insertedIds;
     }
     return null;
