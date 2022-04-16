@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 
-import { UniswapV2Indexer, BalancerV2Indexer, CurveIndexer } from "./markets";
+import { UniswapV2Indexer, BalancerV2Indexer, CurveIndexer, DodoIndexer } from "./markets";
 import { Database } from "./mongodb";
 import {
   curveRegistryAddr,
@@ -29,16 +29,19 @@ async function main() {
   // const indexer = new BalancerV2Indexer(database, poolCollectionName);
   // await indexer.processAll();
 
-  const indexer = new CurveIndexer(provider, database, poolCollectionName, {
-    curveRegistryAddr,
-    stablePoolFactoryAddr,
-    curveV2RegistryAddr,
-    cryptoPoolFactoryAddr,
-  });
-  await indexer.handleRegistryPoolAdded();
+  // const indexer = new CurveIndexer(provider, database, poolCollectionName, {
+    // curveRegistryAddr,
+    // stablePoolFactoryAddr,
+    // curveV2RegistryAddr,
+    // cryptoPoolFactoryAddr,
+  // });
+  // await indexer.handleRegistryPoolAdded();
   // await indexer.handleStablePoolDeployed();
   // await indexer.handleRegistryV2PoolAdded();
   // await indexer.handleCryptoPoolDeployed();
+
+  const indexer = new DodoIndexer(database, poolCollectionName);
+  await indexer.processAll();
 
   await database.close();
 }
