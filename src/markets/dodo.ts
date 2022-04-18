@@ -4,17 +4,17 @@ import retry from "async-retry";
 import { Pool, Protocol } from "../types";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
-import { utils } from 'ethers';
+import { utils } from "ethers";
 
 const DODO_SUBGRAPH_URL =
   "https://api.thegraph.com/subgraphs/name/dodoex/dodoex-v2";
 
 export type RawSubgraphPool = {
   id: string;
-    baseToken: {id: string, decimals: string}
-    quoteToken: {id: string, decimals: string}
-    quoteReserve: string;
-    baseReserve: string;
+  baseToken: { id: string; decimals: string };
+  quoteToken: { id: string; decimals: string };
+  quoteReserve: string;
+  baseReserve: string;
 };
 
 export class DodoIndexer {
@@ -34,10 +34,16 @@ export class DodoIndexer {
   async fetchPoolsFromSubgraph() {
     const query = gql`
       query fetchTopPools($pageSize: Int!, $id: String) {
-        pairs(first: $pageSize, where: { quoteReserve_gt: 0 id_gt: $id }) {
+        pairs(first: $pageSize, where: { quoteReserve_gt: 0, id_gt: $id }) {
           id
-          baseToken {id decimals}
-          quoteToken {id decimals}
+          baseToken {
+            id
+            decimals
+          }
+          quoteToken {
+            id
+            decimals
+          }
           quoteReserve
           baseReserve
         }
@@ -88,15 +94,22 @@ export class DodoIndexer {
     return allPools;
   }
 
-  async processAll() {
+  async processAllPools() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
     const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
-      protocol: Protocol.BalancerV2,
+      protocol: Protocol.DODO,
       id: subgraphPool.id,
       tokens: [subgraphPool.baseToken.id, subgraphPool.quoteToken.id],
       reserves: [
-          utils.parseUnits(subgraphPool.baseReserve, subgraphPool.baseToken.decimals).toString(),
-          utils.parseUnits(subgraphPool.quoteReserve, subgraphPool.quoteToken.decimals).toString(),
+        utils
+          .parseUnits(subgraphPool.baseReserve, subgraphPool.baseToken.decimals)
+          .toString(),
+        utils
+          .parseUnits(
+            subgraphPool.quoteReserve,
+            subgraphPool.quoteToken.decimals
+          )
+          .toString(),
       ],
       reservesUSD: [],
     }));

@@ -4,28 +4,31 @@ import retry from "async-retry";
 import { Pool, Protocol, Token } from "../types";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
-import { PRICING_ASSETS, USD_STABLE_ASSETS } from "../tokens";
-import { BigNumber } from "bigNumber.js";
+import BigNumber from "bignumber.js";
 
-const BALANCERV2_SUBGRAPH_URL =
-  "https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2";
+const UNISWAPV3_SUBGRAPH_URL =
+  "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3";
 
 export type RawSubgraphPool = {
   id: string;
-  tokens: Array<{ address: string; balance: string }>;
+  feeTier: string;
+  token0: {
+    id: string;
+  };
+  token1: {
+    id: string;
+  };
+  totalValueLockedUSD: string;
 };
 
 export type RawSubgraphToken = {
   id: string;
+  derivedETH: string;
   decimals: string;
   symbol: string;
-  latestPrice: {
-    pricingAsset: string;
-    price: string;
-  };
 };
 
-export class BalancerV2SubgraphIndexer {
+export class UniswapV3SubgraphIndexer {
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;
@@ -36,7 +39,7 @@ export class BalancerV2SubgraphIndexer {
     protected poolCollectionName: string,
     protected tokenCollectionName: string
   ) {
-    this.subgraph_url = BALANCERV2_SUBGRAPH_URL;
+    this.subgraph_url = UNISWAPV3_SUBGRAPH_URL;
     this.pageSize = 1000;
     this.client = new GraphQLClient(this.subgraph_url);
     this.retries = 3;
@@ -45,13 +48,17 @@ export class BalancerV2SubgraphIndexer {
 
   async fetchPoolsFromSubgraph() {
     const query = gql`
-      query fetchTopPools($pageSize: Int!, $id: String) {
-        pools(first: $pageSize, where: { totalLiquidity_gt: 0, id_gt: $id }) {
+      query getPools($pageSize: Int!, $id: String) {
+        pools(first: $pageSize, where: { id_gt: $id, liquidity_gt: 0 }) {
           id
-          tokens {
-            address
-            balance
+          token0 {
+            id
           }
+          token1 {
+            id
+          }
+          feeTier
+          totalValueLockedUSD
         }
       }
     `;
@@ -81,6 +88,7 @@ export class BalancerV2SubgraphIndexer {
             },
           }
         );
+        logger.info(`processing ${pools.length}th pools`);
       } while (poolsPage.length > 0);
 
       return pools;
@@ -100,16 +108,34 @@ export class BalancerV2SubgraphIndexer {
     return allPools;
   }
 
-  async processAll() {
+  async processAllPools() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
     const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
-      protocol: Protocol.BalancerV2,
+      protocol: Protocol.UniswapV3,
       id: subgraphPool.id,
-      tokens: subgraphPool.tokens.map((token) => token.address),
-      reserves: subgraphPool.tokens.map((token) => token.balance),
-      reservesUSD: Array(subgraphPool.tokens.length).fill(""),
+      tokens: [subgraphPool.token0.id, subgraphPool.token1.id],
+      reserves: [],
+      reservesUSD: [],
+      fillData: {
+        feeTier: subgraphPool.feeTier,
+        tvlUSD: subgraphPool.totalValueLockedUSD,
+      },
     }));
     await this.database.saveMany(pools, this.poolCollectionName);
+  }
+
+  async fetchETHPrice() {
+    const query = gql`
+      query getPools($id: String) {
+        bundle(id: $id) {
+          ethPriceUSD
+        }
+      }
+    `;
+    const bundleResult = await this.client.request<{
+      bundle: { ethPriceUSD: string };
+    }>(query, { id: "1" });
+    return bundleResult.bundle.ethPriceUSD;
   }
 
   async fetchTokensFromSubgraph() {
@@ -117,12 +143,9 @@ export class BalancerV2SubgraphIndexer {
       query getPools($pageSize: Int!, $id: String) {
         tokens(first: $pageSize, where: { id_gt: $id }) {
           id
+          derivedETH
           decimals
           symbol
-          latestPrice {
-            pricingAsset
-            price
-          }
         }
       }
     `;
@@ -173,52 +196,20 @@ export class BalancerV2SubgraphIndexer {
   }
 
   async processAllTokens() {
+    const ethPrice = await this.fetchETHPrice();
+    logger.info(`ethPrice: ${ethPrice}`);
     const subgraphTokens = await this.fetchTokensFromSubgraph();
-    // get price of pricing asset first
-    const pricingAssetAddrs = PRICING_ASSETS.map((asset) =>
-      asset.address.toLowerCase()
-    );
-    const usdAssetAddrs = USD_STABLE_ASSETS.map((asset) =>
-      asset.address.toLowerCase()
-    );
-    const pricingTokens = subgraphTokens.filter((subgraphToken) =>
-      pricingAssetAddrs.includes(subgraphToken.id)
-    );
-    const usdTokens = pricingTokens.filter((subgraphToken) =>
-      usdAssetAddrs.includes(subgraphToken.latestPrice.pricingAsset)
-    );
-    const usdPriceForPricingAsset = pricingTokens.map((pricingToken) => {
-      if (usdAssetAddrs.includes(pricingToken.latestPrice.pricingAsset)) {
-        return pricingToken.latestPrice.price;
-      }
-      const tokens = usdTokens.filter(
-        (usdToken) => usdToken.id === pricingToken.latestPrice.pricingAsset
-      );
-      if (!tokens.length) {
-        throw new Error(`cannot pricing for asset: ${pricingToken.id}`);
-      }
-      return new BigNumber(tokens[0].latestPrice.price).multipliedBy(
-        pricingToken.latestPrice.price
-      );
-    });
+    logger.info(`num of tokens: ${subgraphTokens.length}`);
+    const ethPriceBigNumber = new BigNumber(ethPrice);
     const pools: Token[] = subgraphTokens.map((subgraphToken) => ({
-      protocol: Protocol.BalancerV2,
+      protocol: Protocol.UniswapV2,
       address: subgraphToken.id,
       symbol: subgraphToken.symbol,
       decimals: parseInt(subgraphToken.decimals),
-      derivedETH: "0",
-      derivedUSD: subgraphToken.latestPrice
-        ? new BigNumber(subgraphToken.latestPrice.price)
-            .multipliedBy(
-              usdPriceForPricingAsset[
-                pricingTokens.findIndex(
-                  (pricingToken) =>
-                    pricingToken.id === subgraphToken.latestPrice.pricingAsset
-                )
-              ]
-            )
-            .toString()
-        : "0",
+      derivedETH: subgraphToken.derivedETH,
+      derivedUSD: ethPriceBigNumber
+        .multipliedBy(subgraphToken.derivedETH)
+        .toString(),
     }));
     await this.database.saveMany(pools, this.tokenCollectionName);
   }

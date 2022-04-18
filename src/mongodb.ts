@@ -1,4 +1,4 @@
-import { Collection, MongoClient, Db } from "mongodb";
+import { Collection, MongoClient, Db, Filter } from "mongodb";
 import { logger } from "./logging";
 
 export class Database {
@@ -15,12 +15,20 @@ export class Database {
     logger.info(`Successfully connected to database: ${this.db.databaseName}`);
   }
 
-  async load(id: string, name: string) {
-    const collection = this.getCollection(name);
+  async load<T>(filter: Filter<T>, name: string) {
+    const collection = this.getCollection<T>(name);
     // load from collection
-    const item = (await collection.findOne({ id })) as unknown;
+    const item = (await collection.findOne(filter)) as unknown as T;
     return item;
   }
+
+    async loadMany<T>(filter: Filter<T>, name: string){
+    const collection = this.getCollection<T>(name);
+    // load from collection
+    const cursor = (await collection.find(filter));
+    const item = await cursor.toArray()  as unknown as T[];
+    return item;
+    }
 
   public getCollection<T>(name: string) {
     let collection: Collection<T>;
@@ -48,7 +56,7 @@ export class Database {
       { upsert: true }
     );
     if (result) {
-      logger.info(`poolId id of ${item.id} is successfully saved!`);
+      logger.info(`${name} id of ${item.id} is successfully saved!`);
       return result.upsertedId;
     }
     return null;
@@ -58,7 +66,7 @@ export class Database {
     const collection = this.getCollection(name);
     const result = await collection.insertMany(items);
     if (result) {
-      logger.info(`${items.length} number of pools successfully saved!`);
+      logger.info(`${items.length} number of ${name} successfully saved!`);
       return result.insertedIds;
     }
     return null;

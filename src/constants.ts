@@ -10,3 +10,4 @@ export const stablePoolFactoryAddr =
 export const cryptoPoolFactoryAddr =
   "0xF18056Bbd320E96A48e3Fbf8bC061322531aac99";
 export const poolCollectionName = "pools";
+export const tokenCollectionName = "tokens";

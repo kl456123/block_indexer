@@ -1,3 +1,7 @@
+import { gql, GraphQLClient } from "graphql-request";
+import Timeout from "await-timeout";
+import retry from "async-retry";
+
 import {
   CurveRegistry__factory,
   CurveRegistry,
@@ -10,8 +14,9 @@ import {
 } from "../typechain";
 import { ethers, Contract } from "ethers";
 import { logger } from "../logging";
-import { Pool, Protocol } from "../types";
+import { Pool, Protocol, Token } from "../types";
 import { Database } from "../mongodb";
+import _ from 'lodash';
 
 export type CurveAddresses = {
   curveRegistryAddr: string;
@@ -20,15 +25,31 @@ export type CurveAddresses = {
   cryptoPoolFactoryAddr: string;
 };
 
+export type RawSubgraphToken = {
+  id: string;
+  price: string;
+  timestamp: string;
+};
+
+const CURVE_SUBGRAPH_URL =
+  "https://api.thegraph.com/subgraphs/name/convex-community/volume-mainnet";
+
 export class CurveIndexer {
   protected stablePoolFactoryContract: CurvePoolFactory;
   protected cryptoPoolFactoryContract: CryptoPoolFactory;
   protected registryContract: CurveRegistry;
   protected registryV2Contract: CryptoRegistry;
+
+  protected subgraph_url: string;
+  protected pageSize: number;
+  protected retries: number;
+  protected timeout: number;
+  protected client: GraphQLClient;
   constructor(
     protected provider: ethers.providers.BaseProvider,
     protected database: Database,
-    protected collectionName: string,
+    protected poolCollectionName: string,
+    protected tokenCollectionName: string,
     {
       curveRegistryAddr,
       curveV2RegistryAddr,
@@ -52,6 +73,12 @@ export class CurveIndexer {
       curveV2RegistryAddr,
       provider
     );
+
+    this.subgraph_url = CURVE_SUBGRAPH_URL;
+    this.pageSize = 1000;
+    this.client = new GraphQLClient(this.subgraph_url);
+    this.retries = 3;
+    this.timeout = 360000;
   }
 
   async handleRegistryPoolAdded() {
@@ -91,7 +118,7 @@ export class CurveIndexer {
       pools.push(pool);
       logger.info(pool);
     }
-    await this.database.saveMany(pools, this.collectionName);
+    await this.database.saveMany(pools, this.poolCollectionName);
   }
   async handleRegistryV2PoolAdded() {
     const poolsAddr = await this.handlePools(this.registryV2Contract);
@@ -123,7 +150,7 @@ export class CurveIndexer {
       pools.push(pool);
       logger.info(pool);
     }
-    await this.database.saveMany(pools, this.collectionName);
+    await this.database.saveMany(pools, this.poolCollectionName);
   }
 
   async handleStablePoolDeployed() {
@@ -178,7 +205,7 @@ export class CurveIndexer {
       pools.push(pool);
       logger.info(pool);
     }
-    await this.database.saveMany(pools, this.collectionName);
+    await this.database.saveMany(pools, this.poolCollectionName);
   }
 
   async handleCryptoPoolDeployed() {
@@ -208,7 +235,7 @@ export class CurveIndexer {
       pools.push(pool);
       logger.info(pool);
     }
-    await this.database.saveMany(pools, this.collectionName);
+    await this.database.saveMany(pools, this.poolCollectionName);
   }
 
   async handlePools(contract: Contract) {
@@ -224,5 +251,90 @@ export class CurveIndexer {
     return pools;
   }
 
-  async pricingUSD(token: string) {}
+  async processAllPools() {
+    await Promise.all([
+      this.handleRegistryPoolAdded(),
+      this.handleStablePoolDeployed(),
+      this.handleRegistryV2PoolAdded(),
+      this.handleCryptoPoolDeployed(),
+    ]);
+  }
+
+  async fetchTokensFromSubgraph() {
+    const query = gql`
+      query getPools($pageSize: Int!, $id: String) {
+        tokenSnapshots(first: $pageSize, where: { id_gt: $id }) {
+          id
+          price
+          timestamp
+        }
+      }
+    `;
+    let allPools: RawSubgraphToken[] = [];
+    const timeout = new Timeout();
+    // get all pools using page mode
+    const getPools = async (): Promise<RawSubgraphToken[]> => {
+      let lastId = "";
+      let pools: RawSubgraphToken[] = [];
+      let poolsPage: RawSubgraphToken[] = [];
+      do {
+        await retry(
+          async () => {
+            const poolsResult = await this.client.request<{
+              tokenSnapshots: RawSubgraphToken[];
+            }>(query, { pageSize: this.pageSize, id: lastId });
+            poolsPage = poolsResult.tokenSnapshots;
+            pools = pools.concat(poolsPage);
+            lastId = pools[pools.length - 1].id;
+          },
+          {
+            retries: this.retries,
+            onRetry: (error, retry) => {
+              logger.error(
+                `Failed request for page of pools from subgraph due to ${error}. Retry attempt: ${retry}`
+              );
+            },
+          }
+        );
+        logger.info(`processing ${pools.length}th tokens`);
+      } while (poolsPage.length > 0);
+
+      return pools;
+    };
+
+    try {
+      const getPoolsPromise = getPools();
+      const timerPromise = timeout.set(this.timeout).then(() => {
+        throw new Error(
+          `Timed out getting pools from subgraph: ${this.timeout}`
+        );
+      });
+      allPools = await Promise.race([getPoolsPromise, timerPromise]);
+    } finally {
+      timeout.clear();
+    }
+    return allPools;
+  }
+
+  async processAllTokens() {
+    const subgraphTokens = await this.fetchTokensFromSubgraph();
+    logger.info(`num of tokens: ${subgraphTokens.length}`);
+    const tokens = subgraphTokens.map(subgraphToken=>{
+        return {
+            ...subgraphToken,
+            address: subgraphToken.id.slice(0, 20)
+        };
+    });
+    const tokenAddrs = _(tokens).map(token=>token.address).uniq().value();
+    const priceTokens = _(tokenAddrs).map(tokenAddr=>_(tokens).filter(token=>tokenAddr===token.address).sortBy(token=>token.timestamp).last()).value() as (RawSubgraphToken&{address: string})[];
+    const pools: Token[] = priceTokens.map((priceToken) => ({
+    protocol: Protocol.Curve,
+    address: priceToken.id,
+    symbol: '',
+    decimals: 0,
+    derivedETH: '0',
+    derivedUSD: priceToken.price,
+    }));
+    await this.database.saveMany(pools, this.tokenCollectionName);
+  }
 }

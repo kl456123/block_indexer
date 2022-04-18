@@ -1,6 +1,13 @@
 import { ethers } from "ethers";
 
-import { UniswapV2Indexer, BalancerV2Indexer, CurveIndexer, DodoIndexer } from "./markets";
+import {
+  UniswapV2Indexer,
+  BalancerV2SubgraphIndexer,
+  CurveIndexer,
+  DodoIndexer,
+  UniswapV2SubgraphIndexer,
+  UniswapV3SubgraphIndexer,
+} from "./markets";
 import { Database } from "./mongodb";
 import {
   curveRegistryAddr,
@@ -8,7 +15,11 @@ import {
   stablePoolFactoryAddr,
   cryptoPoolFactoryAddr,
   poolCollectionName,
+  tokenCollectionName,
 } from "./constants";
+import { logger } from './logging';
+import { Token } from './types';
+
 import * as dotenv from "dotenv";
 dotenv.config();
 
@@ -29,19 +40,29 @@ async function main() {
   // const indexer = new BalancerV2Indexer(database, poolCollectionName);
   // await indexer.processAll();
 
-  // const indexer = new CurveIndexer(provider, database, poolCollectionName, {
-    // curveRegistryAddr,
-    // stablePoolFactoryAddr,
-    // curveV2RegistryAddr,
-    // cryptoPoolFactoryAddr,
-  // });
-  // await indexer.handleRegistryPoolAdded();
-  // await indexer.handleStablePoolDeployed();
-  // await indexer.handleRegistryV2PoolAdded();
-  // await indexer.handleCryptoPoolDeployed();
+  // const indexer = new CurveIndexer(
+    // provider,
+    // database,
+    // poolCollectionName,
+    // tokenCollectionName,
+    // {
+      // curveRegistryAddr,
+      // stablePoolFactoryAddr,
+      // curveV2RegistryAddr,
+      // cryptoPoolFactoryAddr,
+    // }
+  // );
 
-  const indexer = new DodoIndexer(database, poolCollectionName);
-  await indexer.processAll();
+  // const indexer = new DodoIndexer(database, poolCollectionName);
+  // await indexer.processAll();
+  // const indexer = new UniswapV2SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
+  // const indexer = new BalancerV2SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
+  // const indexer = new UniswapV3SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
+  // await indexer.processAllPools();
+  // await indexer.processAllTokens();
+
+    const tokens = await database.loadMany<Token>({address: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"}, tokenCollectionName);
+    logger.info(tokens);
 
   await database.close();
 }

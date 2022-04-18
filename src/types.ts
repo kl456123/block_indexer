@@ -7,13 +7,19 @@ export enum Protocol {
   BalancerV2,
   Bancor,
   Kyber,
+  DODO,
 }
 
 export type Token = {
+  protocol: Protocol;
   address: string;
   symbol: string;
   name?: string;
   decimals: number;
+  derivedETH: string;
+  derivedUSD?: string;
+  timestamp?: string;
+  block?: string;
 };
 
 export type Pool = {
