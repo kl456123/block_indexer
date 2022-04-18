@@ -5,6 +5,7 @@ import { Pool, Protocol, Token } from "../types";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
 import BigNumber from "bignumber.js";
+import { MarketInterface } from './market_interface';
 
 const UNISWAPV2_SUBGRAPH_URL =
   "https://api.thegraph.com/subgraphs/name/ianlapham/uniswapv2";
@@ -29,7 +30,7 @@ export type RawSubgraphToken = {
   symbol: string;
 };
 
-export class UniswapV2SubgraphIndexer {
+export class UniswapV2SubgraphIndexer implements MarketInterface{
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;
@@ -50,7 +51,7 @@ export class UniswapV2SubgraphIndexer {
   async fetchPoolsFromSubgraph() {
     const query = gql`
       query getPools($pageSize: Int!, $id: String) {
-        pairs(first: $pageSize, where: { id_gt: $id, liquidity_gt: 0 }) {
+        pairs(first: $pageSize, where: { id_gt: $id }) {
           id
           token0 {
             id
@@ -90,6 +91,7 @@ export class UniswapV2SubgraphIndexer {
             },
           }
         );
+        logger.info(`processing ${pools.length}th pools`);
       } while (poolsPage.length > 0);
 
       return pools;
@@ -109,14 +111,13 @@ export class UniswapV2SubgraphIndexer {
     return allPools;
   }
 
-  async processAll() {
+  async processAllPools() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
     const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
       protocol: Protocol.UniswapV2,
       id: subgraphPool.id,
       tokens: [subgraphPool.token0.id, subgraphPool.token1.id],
       reserves: [subgraphPool.reserve0, subgraphPool.reserve1],
-      reservesUSD: ["0", "0"],
       fillData: { tvlUSD: subgraphPool.reserveUSD },
     }));
     await this.database.saveMany(pools, this.poolCollectionName);

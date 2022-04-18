@@ -16,7 +16,7 @@ export type Token = {
   symbol: string;
   name?: string;
   decimals: number;
-  derivedETH: string;
+  derivedETH?: string;
   derivedUSD?: string;
   timestamp?: string;
   block?: string;
@@ -27,6 +27,6 @@ export type Pool = {
   id: string;
   tokens: string[];
   reserves: string[];
-  reservesUSD: string[];
+  reservesUSD?: string[];
   poolData?: unknown;
 };

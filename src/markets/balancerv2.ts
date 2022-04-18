@@ -6,6 +6,7 @@ import { logger } from "../logging";
 import { Database } from "../mongodb";
 import { PRICING_ASSETS, USD_STABLE_ASSETS } from "../tokens";
 import { BigNumber } from "bigNumber.js";
+import { MarketInterface } from './market_interface';
 
 const BALANCERV2_SUBGRAPH_URL =
   "https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2";
@@ -25,7 +26,7 @@ export type RawSubgraphToken = {
   };
 };
 
-export class BalancerV2SubgraphIndexer {
+export class BalancerV2SubgraphIndexer implements MarketInterface{
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;
@@ -100,14 +101,13 @@ export class BalancerV2SubgraphIndexer {
     return allPools;
   }
 
-  async processAll() {
+  async processAllPools() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
     const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
       protocol: Protocol.BalancerV2,
       id: subgraphPool.id,
       tokens: subgraphPool.tokens.map((token) => token.address),
       reserves: subgraphPool.tokens.map((token) => token.balance),
-      reservesUSD: Array(subgraphPool.tokens.length).fill(""),
     }));
     await this.database.saveMany(pools, this.poolCollectionName);
   }
@@ -206,7 +206,6 @@ export class BalancerV2SubgraphIndexer {
       address: subgraphToken.id,
       symbol: subgraphToken.symbol,
       decimals: parseInt(subgraphToken.decimals),
-      derivedETH: "0",
       derivedUSD: subgraphToken.latestPrice
         ? new BigNumber(subgraphToken.latestPrice.price)
             .multipliedBy(

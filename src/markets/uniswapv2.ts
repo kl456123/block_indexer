@@ -8,8 +8,9 @@ import retry from "async-retry";
 import { ethers } from "ethers";
 import { Token, Pool, Protocol } from "../types";
 import { Database } from "../mongodb";
+import { MarketInterface } from './market_interface';
 
-export class UniswapV2Indexer {
+export class UniswapV2Indexer implements MarketInterface{
   protected factoryContract: UniswapV2Factory;
   protected retries: number;
   protected chunkSize: number;
@@ -44,7 +45,6 @@ export class UniswapV2Indexer {
       id: poolAddr,
       protocol: Protocol.UniswapV2,
       reserves: [reserve0, reserve1],
-      reservesUSD: ["0", "0"],
       tokens: [token0, token1],
     };
     if (save) {
@@ -53,14 +53,14 @@ export class UniswapV2Indexer {
     return pool;
   }
 
-  public async processAll(start = 0, save = true) {
+  public async processAllPools() {
     const allPairsLength = (
       await this.factoryContract.allPairsLength()
     ).toNumber();
     logger.info(`total number of pairs: ${allPairsLength}`);
     const calls: Promise<Pool>[] = [];
-    const allPools = [];
-    for (let i = start; i < allPairsLength; ++i) {
+    // const allPools = [];
+    for (let i = 0; i < allPairsLength; ++i) {
       calls.push(this.processSingle.bind(this)(i, false));
       if (calls.length % this.chunkSize === 0) {
         let pools: Pool[] = [];
@@ -84,14 +84,16 @@ export class UniswapV2Indexer {
           logger.error(`skip index from ${i - this.chunkSize + 1}th -${i}th`);
           continue;
         }
-        if (save) {
-          await this.database.saveMany(pools, this.collectionName);
-        }
-        allPools.push(...pools);
+        await this.database.saveMany(pools, this.collectionName);
+        // allPools.push(...pools);
         calls.length = 0;
         logger.info(`processing the ${i + 1}th new pool`);
       }
     }
-    return allPools;
+    // return allPools;
   }
+
+    async processAllTokens(){
+        throw new Error(`Unimplementation Error`);
+    }
 }

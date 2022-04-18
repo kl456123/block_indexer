@@ -1,4 +1,4 @@
-import { ethers } from "ethers";
+import { ethers, BigNumber } from "ethers";
 
 import {
   UniswapV2Indexer,
@@ -18,10 +18,50 @@ import {
   tokenCollectionName,
 } from "./constants";
 import { logger } from './logging';
-import { Token } from './types';
+import { Token, Pool, Protocol } from './types';
+import _ from 'lodash';
 
 import * as dotenv from "dotenv";
 dotenv.config();
+
+async function pricingPools(database: Database){
+    const tokens = await database.loadMany<Token>({}, poolCollectionName);
+    const tokensMap: Record<string, string> = {};
+    // TODO generate mapping between tokens address with their usd prices
+    const pools = await database.loadMany<Pool>({reservesUSD: {$exists: false}}, poolCollectionName);
+    _(pools).forEach(pool=>{
+        pool.tokens[0]
+        pool.reserves.map((reserve, ind)=>BigNumber.from(tokensMap[pool.tokens[ind]]).mul(reserve));
+    });
+    logger.info(pools.length);
+}
+
+async function savePools(database: Database, provider: ethers.providers.BaseProvider){
+  const uniswapV2Indexer = new UniswapV2SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
+  const balancerV2Indexer = new BalancerV2SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
+  const uniswapV3Indexer = new UniswapV3SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
+  const curveIndexer = new CurveIndexer(
+    provider,
+    database,
+    poolCollectionName,
+    tokenCollectionName,
+    {
+      curveRegistryAddr,
+      stablePoolFactoryAddr,
+      curveV2RegistryAddr,
+      cryptoPoolFactoryAddr,
+    }
+  );
+  const dodoIndexer = new DodoIndexer(database, poolCollectionName);
+  const indexers = [uniswapV2Indexer, balancerV2Indexer, uniswapV3Indexer, curveIndexer];
+  const protocols = [Protocol.UniswapV2, Protocol.BalancerV2, Protocol.UniswapV3, Protocol.Curve];
+    for(let i=0;i<indexers.length;++i){
+        const indexer = indexers[i];
+        logger.info(`processing indexer: ${Protocol[protocols[i]]}`);
+        // await indexer.processAllPools();
+        await indexer.processAllTokens();
+    }
+}
 
 async function main() {
   // const url = `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`
@@ -31,38 +71,8 @@ async function main() {
   const database = new Database(process.env.DB_CONN_STRING as string);
   await database.initDB(process.env.DB_NAME as string);
 
-  // const indexer = new UniswapV2Indexer(
-  // provider,
-  // database,
-  // factoryAddr,
-  // poolCollectionName
-  // );
-  // const indexer = new BalancerV2Indexer(database, poolCollectionName);
-  // await indexer.processAll();
-
-  // const indexer = new CurveIndexer(
-    // provider,
-    // database,
-    // poolCollectionName,
-    // tokenCollectionName,
-    // {
-      // curveRegistryAddr,
-      // stablePoolFactoryAddr,
-      // curveV2RegistryAddr,
-      // cryptoPoolFactoryAddr,
-    // }
-  // );
-
-  // const indexer = new DodoIndexer(database, poolCollectionName);
-  // await indexer.processAll();
-  // const indexer = new UniswapV2SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
-  // const indexer = new BalancerV2SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
-  // const indexer = new UniswapV3SubgraphIndexer(database, poolCollectionName, tokenCollectionName);
-  // await indexer.processAllPools();
-  // await indexer.processAllTokens();
-
-    const tokens = await database.loadMany<Token>({address: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"}, tokenCollectionName);
-    logger.info(tokens);
+  // await savePools(database, provider);
+  await pricingPools(database);
 
   await database.close();
 }

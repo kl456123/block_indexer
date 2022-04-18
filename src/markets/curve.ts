@@ -17,6 +17,7 @@ import { logger } from "../logging";
 import { Pool, Protocol, Token } from "../types";
 import { Database } from "../mongodb";
 import _ from 'lodash';
+import { MarketInterface } from './market_interface';
 
 export type CurveAddresses = {
   curveRegistryAddr: string;
@@ -34,7 +35,7 @@ export type RawSubgraphToken = {
 const CURVE_SUBGRAPH_URL =
   "https://api.thegraph.com/subgraphs/name/convex-community/volume-mainnet";
 
-export class CurveIndexer {
+export class CurveIndexer implements MarketInterface{
   protected stablePoolFactoryContract: CurvePoolFactory;
   protected cryptoPoolFactoryContract: CryptoPoolFactory;
   protected registryContract: CurveRegistry;
