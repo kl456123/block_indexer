@@ -17,7 +17,7 @@ export type Token = {
   name?: string;
   decimals: number;
   derivedETH?: string;
-  derivedUSD?: string;
+  derivedUSD: string;
   timestamp?: string;
   block?: string;
 };

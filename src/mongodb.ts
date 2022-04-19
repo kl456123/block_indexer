@@ -72,6 +72,16 @@ export class Database {
     return null;
   }
 
+    async deleteMany<T>(filter: Filter<T>, name: string){
+        const collection = this.getCollection<T>(name);
+        const result = await collection.deleteMany(filter);
+        if(result){
+            logger.info(`${result.deletedCount} number of ${name} successfully deleted!`);
+            return result.deletedCount;
+        }
+        return null;
+    }
+
   async close() {
     return this.client.close();
   }
