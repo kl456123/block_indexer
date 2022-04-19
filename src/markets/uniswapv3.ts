@@ -5,7 +5,7 @@ import { Pool, Protocol, Token } from "../types";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
 import BigNumber from "bignumber.js";
-import { MarketInterface } from './market_interface';
+import { MarketInterface } from "./market_interface";
 
 const UNISWAPV3_SUBGRAPH_URL =
   "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3";
@@ -29,7 +29,7 @@ export type RawSubgraphToken = {
   symbol: string;
 };
 
-export class UniswapV3SubgraphIndexer implements MarketInterface{
+export class UniswapV3SubgraphIndexer implements MarketInterface {
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;

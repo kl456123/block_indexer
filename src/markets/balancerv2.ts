@@ -6,7 +6,7 @@ import { logger } from "../logging";
 import { Database } from "../mongodb";
 import { PRICING_ASSETS, USD_STABLE_ASSETS } from "../tokens";
 import { BigNumber } from "bigNumber.js";
-import { MarketInterface } from './market_interface';
+import { MarketInterface } from "./market_interface";
 
 const BALANCERV2_SUBGRAPH_URL =
   "https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2";
@@ -26,7 +26,7 @@ export type RawSubgraphToken = {
   };
 };
 
-export class BalancerV2SubgraphIndexer implements MarketInterface{
+export class BalancerV2SubgraphIndexer implements MarketInterface {
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;

@@ -22,13 +22,13 @@ export class Database {
     return item;
   }
 
-    async loadMany<T>(filter: Filter<T>, name: string){
+  async loadMany<T>(filter: Filter<T>, name: string) {
     const collection = this.getCollection<T>(name);
     // load from collection
-    const cursor = (await collection.find(filter));
-    const item = await cursor.toArray()  as unknown as T[];
+    const cursor = await collection.find(filter);
+    const item = (await cursor.toArray()) as unknown as T[];
     return item;
-    }
+  }
 
   public getCollection<T>(name: string) {
     let collection: Collection<T>;
@@ -72,15 +72,17 @@ export class Database {
     return null;
   }
 
-    async deleteMany<T>(filter: Filter<T>, name: string){
-        const collection = this.getCollection<T>(name);
-        const result = await collection.deleteMany(filter);
-        if(result){
-            logger.info(`${result.deletedCount} number of ${name} successfully deleted!`);
-            return result.deletedCount;
-        }
-        return null;
+  async deleteMany<T>(filter: Filter<T>, name: string) {
+    const collection = this.getCollection<T>(name);
+    const result = await collection.deleteMany(filter);
+    if (result) {
+      logger.info(
+        `${result.deletedCount} number of ${name} successfully deleted!`
+      );
+      return result.deletedCount;
     }
+    return null;
+  }
 
   async close() {
     return this.client.close();

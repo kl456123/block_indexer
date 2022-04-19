@@ -8,9 +8,9 @@ import retry from "async-retry";
 import { ethers } from "ethers";
 import { Token, Pool, Protocol } from "../types";
 import { Database } from "../mongodb";
-import { MarketInterface } from './market_interface';
+import { MarketInterface } from "./market_interface";
 
-export class UniswapV2Indexer implements MarketInterface{
+export class UniswapV2Indexer implements MarketInterface {
   protected factoryContract: UniswapV2Factory;
   protected retries: number;
   protected chunkSize: number;
@@ -93,7 +93,7 @@ export class UniswapV2Indexer implements MarketInterface{
     // return allPools;
   }
 
-    async processAllTokens(){
-        throw new Error(`Unimplementation Error`);
-    }
+  async processAllTokens() {
+    throw new Error(`Unimplementation Error`);
+  }
 }

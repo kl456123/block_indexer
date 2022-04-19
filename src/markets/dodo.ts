@@ -5,7 +5,7 @@ import { Pool, Protocol } from "../types";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
 import { utils } from "ethers";
-import { MarketInterface } from './market_interface';
+import { MarketInterface } from "./market_interface";
 
 const DODO_SUBGRAPH_URL =
   "https://api.thegraph.com/subgraphs/name/dodoex/dodoex-v2";
@@ -18,7 +18,7 @@ export type RawSubgraphPool = {
   baseReserve: string;
 };
 
-export class DodoIndexer implements MarketInterface{
+export class DodoIndexer implements MarketInterface {
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;
@@ -116,7 +116,7 @@ export class DodoIndexer implements MarketInterface{
     await this.database.saveMany(pools, this.collectionName);
   }
 
-    async processAllTokens(){
-        throw new Error(`Unimplementation Error`);
-    }
+  async processAllTokens() {
+    throw new Error(`Unimplementation Error`);
+  }
 }

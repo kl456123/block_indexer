@@ -12,12 +12,13 @@ import {
   CurvePoolFactory__factory,
   CurvePoolFactory,
 } from "../typechain";
-import { ethers, Contract } from "ethers";
+import { ethers, Contract, utils } from "ethers";
 import { logger } from "../logging";
 import { Pool, Protocol, Token } from "../types";
 import { Database } from "../mongodb";
-import _ from 'lodash';
-import { MarketInterface } from './market_interface';
+import _ from "lodash";
+import { MarketInterface } from "./market_interface";
+import { getTokensInfo } from "../utils";
 
 export type CurveAddresses = {
   curveRegistryAddr: string;
@@ -35,7 +36,7 @@ export type RawSubgraphToken = {
 const CURVE_SUBGRAPH_URL =
   "https://api.thegraph.com/subgraphs/name/convex-community/volume-mainnet";
 
-export class CurveIndexer implements MarketInterface{
+export class CurveIndexer implements MarketInterface {
   protected stablePoolFactoryContract: CurvePoolFactory;
   protected cryptoPoolFactoryContract: CryptoPoolFactory;
   protected registryContract: CurveRegistry;
@@ -104,16 +105,18 @@ export class CurveIndexer implements MarketInterface{
       }
       const balancesBigNumber =
         await this.registryContract.get_underlying_balances(poolAddr);
+      const tokensInfo = await getTokensInfo(tokens, this.provider);
       const reserves = balancesBigNumber
         .map((balanceBigNumber) => balanceBigNumber.toString())
-        .slice(0, coinsNum);
-      const reservesUSD = Array(reserves.length).fill("0");
+        .slice(0, coinsNum)
+        .map((reserve, ind) =>
+          utils.formatUnits(reserve, tokensInfo[ind].decimals).toString()
+        );
       const pool: Pool = {
         id: poolAddr,
-        protocol: Protocol.CurveV2,
+        protocol: Protocol.Curve,
         tokens,
         reserves,
-        reservesUSD,
         poolData: { isMeta, isLending, wrappedToken },
       };
       pools.push(pool);
@@ -136,16 +139,18 @@ export class CurveIndexer implements MarketInterface{
       const balancesBigNumber = await this.registryV2Contract.get_balances(
         poolAddr
       );
+      const tokensInfo = await getTokensInfo(tokens, this.provider);
       const reserves = balancesBigNumber
         .map((balanceBigNumber) => balanceBigNumber.toString())
-        .slice(0, coinsNum);
-      const reservesUSD = Array(reserves.length).fill("0");
+        .slice(0, coinsNum)
+        .map((reserve, ind) =>
+          utils.formatUnits(reserve, tokensInfo[ind].decimals).toString()
+        );
       const pool: Pool = {
         id: poolAddr,
         protocol: Protocol.CurveV2,
         tokens,
         reserves,
-        reservesUSD,
         poolData: { isMeta: false }, // all crypto pools isn't metapool
       };
       pools.push(pool);
@@ -175,9 +180,13 @@ export class CurveIndexer implements MarketInterface{
             await this.stablePoolFactoryContract.get_underlying_balances(
               poolAddr
             );
+          const tokensInfo = await getTokensInfo(tokens, this.provider);
           reserves = balancesBigNumber
             .map((balanceBigNumber) => balanceBigNumber.toString())
-            .slice(0, coinsNum);
+            .slice(0, coinsNum)
+            .map((reserve, ind) =>
+              utils.formatUnits(reserve, tokensInfo[ind].decimals).toString()
+            );
         } else {
           const coinsBigNumber =
             await this.stablePoolFactoryContract.get_n_coins(poolAddr);
@@ -185,11 +194,15 @@ export class CurveIndexer implements MarketInterface{
           tokens = (
             await this.stablePoolFactoryContract.get_coins(poolAddr)
           ).slice(0, coinsNum);
+          const tokensInfo = await getTokensInfo(tokens, this.provider);
           const balancesBigNumber =
             await this.stablePoolFactoryContract.get_balances(poolAddr);
           reserves = balancesBigNumber
             .map((balanceBigNumber) => balanceBigNumber.toString())
-            .slice(0, coinsNum);
+            .slice(0, coinsNum)
+            .map((reserve, ind) =>
+              utils.formatUnits(reserve, tokensInfo[ind].decimals).toString()
+            );
         }
       } catch (error) {
         logger.error(`address: ${poolAddr} isMeta: ${isMeta}`);
@@ -197,10 +210,9 @@ export class CurveIndexer implements MarketInterface{
       }
       const pool: Pool = {
         id: poolAddr,
-        protocol: Protocol.CurveV2,
+        protocol: Protocol.Curve,
         tokens,
         reserves,
-        reservesUSD: Array(reserves.length).fill("0"),
         poolData: { isMeta }, // all crypto pools isn't metapool
       };
       pools.push(pool);
@@ -221,16 +233,18 @@ export class CurveIndexer implements MarketInterface{
       ).slice(0, coinsNum);
       const balancesBigNumber =
         await this.cryptoPoolFactoryContract.get_balances(poolAddr);
+      const tokensInfo = await getTokensInfo(tokens, this.provider);
       const reserves = balancesBigNumber
         .map((balanceBigNumber) => balanceBigNumber.toString())
-        .slice(0, coinsNum);
-      const reservesUSD = Array(reserves.length).fill("0");
+        .slice(0, coinsNum)
+        .map((reserve, ind) =>
+          utils.formatUnits(reserve, tokensInfo[ind].decimals).toString()
+        );
       const pool: Pool = {
         id: poolAddr,
         protocol: Protocol.CurveV2,
         tokens,
         reserves,
-        reservesUSD,
         poolData: { isMeta: false }, // all crypto pools isn't metapool
       };
       pools.push(pool);
@@ -320,21 +334,31 @@ export class CurveIndexer implements MarketInterface{
   async processAllTokens() {
     const subgraphTokens = await this.fetchTokensFromSubgraph();
     logger.info(`num of tokens: ${subgraphTokens.length}`);
-    const tokens = subgraphTokens.map(subgraphToken=>{
-        return {
-            ...subgraphToken,
-            address: subgraphToken.id.slice(0, 20)
-        };
+    const tokens = subgraphTokens.map((subgraphToken) => {
+      return {
+        ...subgraphToken,
+        address: subgraphToken.id.slice(0, 20),
+      };
     });
-    const tokenAddrs = _(tokens).map(token=>token.address).uniq().value();
-    const priceTokens = _(tokenAddrs).map(tokenAddr=>_(tokens).filter(token=>tokenAddr===token.address).sortBy(token=>token.timestamp).last()).value() as (RawSubgraphToken&{address: string})[];
+    const tokenAddrs = _(tokens)
+      .map((token) => token.address)
+      .uniq()
+      .value();
+    const priceTokens = _(tokenAddrs)
+      .map((tokenAddr) =>
+        _(tokens)
+          .filter((token) => tokenAddr === token.address)
+          .sortBy((token) => token.timestamp)
+          .last()
+      )
+      .value() as (RawSubgraphToken & { address: string })[];
     const pools: Token[] = priceTokens.map((priceToken) => ({
-    protocol: Protocol.Curve,
-    address: priceToken.id,
-    symbol: '',
-    decimals: 0,
-    derivedETH: '0',
-    derivedUSD: priceToken.price,
+      protocol: Protocol.Curve,
+      address: priceToken.id,
+      symbol: "",
+      decimals: 0,
+      derivedETH: "0",
+      derivedUSD: priceToken.price,
     }));
     await this.database.saveMany(pools, this.tokenCollectionName);
   }
