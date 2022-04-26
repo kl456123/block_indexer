@@ -1,3 +1,5 @@
+import { CollectionName } from "./types";
+
 // uniswapv2
 export const uniswapV2factoryAddr =
   "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
@@ -11,3 +13,12 @@ export const cryptoPoolFactoryAddr =
   "0xF18056Bbd320E96A48e3Fbf8bC061322531aac99";
 export const poolCollectionName = "pools";
 export const tokenCollectionName = "tokens";
+export const snapshotCollectionName = "snapshot";
+
+export const DefaultCollectionName: CollectionName = {
+  pool: poolCollectionName,
+  token: tokenCollectionName,
+  snapshot: snapshotCollectionName,
+};
+
+export const DAY = 86400;

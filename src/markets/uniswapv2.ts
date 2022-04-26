@@ -1,8 +1,11 @@
-import { gql, GraphQLClient } from "graphql-request";
 import retry from "async-retry";
-import { Pool, Protocol, Token } from "../types";
+import { gql, GraphQLClient } from "graphql-request";
+
+import { DefaultCollectionName } from "../constants";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
+import { CollectionName, DailyVolumeSnapshot, Protocol } from "../types";
+
 import { MarketInterface } from "./market_interface";
 
 const UNISWAPV2_SUBGRAPH_URL =
@@ -10,7 +13,6 @@ const UNISWAPV2_SUBGRAPH_URL =
 
 export type RawSubgraphPool = {
   id: string;
-  pairAddress: string;
   token0: {
     id: string;
     symbol: string;
@@ -29,8 +31,7 @@ export class UniswapV2SubgraphIndexer implements MarketInterface {
   protected client: GraphQLClient;
   constructor(
     protected database: Database,
-    protected poolCollectionName: string,
-    protected tokenCollectionName: string
+    protected collectionName: CollectionName = DefaultCollectionName
   ) {
     this.subgraph_url = UNISWAPV2_SUBGRAPH_URL;
     this.pageSize = 1000;
@@ -43,7 +44,6 @@ export class UniswapV2SubgraphIndexer implements MarketInterface {
       query getPools($pageSize: Int!, $id: String) {
         pairDayDatas(first: $pageSize, where: { id_gt: $id }) {
           id
-          pairAddress
           token0 {
             id
             symbol
@@ -91,14 +91,25 @@ export class UniswapV2SubgraphIndexer implements MarketInterface {
     return allPools;
   }
 
-  async processAllPools() {
+  async processAllSnapshots() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
-    const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
-      protocol: Protocol.UniswapV2,
-      id: subgraphPool.id,
-      tokens: [subgraphPool.token0, subgraphPool.token1],
-      dailyVolumeUSD: subgraphPool.dailyVolumeUSD,
-    }));
-    await this.database.saveMany(pools, this.poolCollectionName);
+    const snapshots: DailyVolumeSnapshot[] = subgraphPools.map(
+      (subgraphPool) => {
+        const [pairAddress, dayId] = subgraphPool.id.split("-");
+        return {
+          id: subgraphPool.id,
+          pool: {
+            id: pairAddress,
+            tokens: [subgraphPool.token0, subgraphPool.token1],
+            protocol: Protocol.UniswapV2,
+          },
+          dayId: dayId,
+          volumeUSD: subgraphPool.dailyVolumeUSD,
+        };
+      }
+    );
+    await this.database.saveMany(snapshots, this.collectionName.snapshot);
   }
+
+  async processAllPools() {}
 }

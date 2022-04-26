@@ -1,9 +1,11 @@
-import { gql, GraphQLClient } from "graphql-request";
-import Timeout from "await-timeout";
 import retry from "async-retry";
-import { Pool, Protocol } from "../types";
+import { gql, GraphQLClient } from "graphql-request";
+
+import { DAY, DefaultCollectionName } from "../constants";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
+import { CollectionName, DailyVolumeSnapshot, Protocol } from "../types";
+
 import { MarketInterface } from "./market_interface";
 
 const BALANCERV2_SUBGRAPH_URL =
@@ -19,18 +21,15 @@ export class BalancerV2SubgraphIndexer implements MarketInterface {
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;
-  protected timeout: number;
   protected client: GraphQLClient;
   constructor(
     protected database: Database,
-    protected poolCollectionName: string,
-    protected tokenCollectionName: string
+    protected collectionName: CollectionName = DefaultCollectionName
   ) {
     this.subgraph_url = BALANCERV2_SUBGRAPH_URL;
     this.pageSize = 1000;
     this.client = new GraphQLClient(this.subgraph_url);
     this.retries = 3;
-    this.timeout = 360000;
   }
 
   async fetchPoolsFromSubgraph() {
@@ -49,7 +48,6 @@ export class BalancerV2SubgraphIndexer implements MarketInterface {
       }
     `;
     let allPools: RawSubgraphPool[] = [];
-    const timeout = new Timeout();
     // get all pools using page mode
     const getPools = async (): Promise<RawSubgraphPool[]> => {
       let lastId = "";
@@ -80,31 +78,30 @@ export class BalancerV2SubgraphIndexer implements MarketInterface {
       return pools;
     };
 
-    try {
-      const getPoolsPromise = getPools();
-      const timerPromise = timeout.set(this.timeout).then(() => {
-        throw new Error(
-          `Timed out getting pools from subgraph: ${this.timeout}`
-        );
-      });
-      allPools = await Promise.race([getPoolsPromise, timerPromise]);
-    } finally {
-      timeout.clear();
-    }
+    allPools = await getPools();
     return allPools;
   }
 
-  async processAllPools() {
+  async processAllSnapshots() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
-    const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
-      protocol: Protocol.BalancerV2,
-      id: subgraphPool.id,
-      tokens: subgraphPool.pool.tokens.map((token) => ({
-        id: token.address,
-        symbol: token.symbol,
-      })),
-      dailyVolumeUSD: subgraphPool.swapVolume,
-    }));
-    await this.database.saveMany(pools, this.poolCollectionName);
+    const pools: DailyVolumeSnapshot[] = subgraphPools.map((subgraphPool) => {
+      const [poolAddress, daytime] = subgraphPool.id.split("-");
+      return {
+        id: subgraphPool.id,
+        pool: {
+          protocol: Protocol.BalancerV2,
+          id: poolAddress,
+          tokens: subgraphPool.pool.tokens.map((token) => ({
+            id: token.address,
+            symbol: token.symbol,
+          })),
+        },
+        volumeUSD: subgraphPool.swapVolume,
+        dayId: (parseInt(daytime) / DAY).toString(),
+      };
+    });
+    await this.database.saveMany(pools, this.collectionName.snapshot);
   }
+
+  async processAllPools() {}
 }

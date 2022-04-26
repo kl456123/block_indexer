@@ -1,12 +1,11 @@
-import { gql, GraphQLClient } from "graphql-request";
-import Timeout from "await-timeout";
 import retry from "async-retry";
+import { gql, GraphQLClient } from "graphql-request";
 
-import { ethers, Contract, utils } from "ethers";
+import { DAY, DefaultCollectionName } from "../constants";
 import { logger } from "../logging";
-import { Pool, Protocol, Token } from "../types";
 import { Database } from "../mongodb";
-import _ from "lodash";
+import { CollectionName, DailyVolumeSnapshot, Protocol } from "../types";
+
 import { MarketInterface } from "./market_interface";
 
 export type RawSubgraphPool = {
@@ -26,19 +25,15 @@ export class CurveIndexer implements MarketInterface {
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;
-  protected timeout: number;
   protected client: GraphQLClient;
   constructor(
-    protected provider: ethers.providers.BaseProvider,
     protected database: Database,
-    protected poolCollectionName: string,
-    protected tokenCollectionName: string
+    protected collectionName: CollectionName = DefaultCollectionName
   ) {
     this.subgraph_url = CURVE_SUBGRAPH_URL;
     this.pageSize = 1000;
     this.client = new GraphQLClient(this.subgraph_url);
     this.retries = 3;
-    this.timeout = 360000;
   }
 
   async fetchPoolsFromSubgraph() {
@@ -56,7 +51,6 @@ export class CurveIndexer implements MarketInterface {
       }
     `;
     let allPools: RawSubgraphPool[] = [];
-    const timeout = new Timeout();
     // get all pools using page mode
     const getPools = async (): Promise<RawSubgraphPool[]> => {
       let lastId = "";
@@ -87,31 +81,31 @@ export class CurveIndexer implements MarketInterface {
       return pools;
     };
 
-    try {
-      const getPoolsPromise = getPools();
-      const timerPromise = timeout.set(this.timeout).then(() => {
-        throw new Error(
-          `Timed out getting pools from subgraph: ${this.timeout}`
-        );
-      });
-      allPools = await Promise.race([getPoolsPromise, timerPromise]);
-    } finally {
-      timeout.clear();
-    }
+    allPools = await getPools();
     return allPools;
   }
 
-  async processAllPools() {
+  async processAllSnapshots() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
-    const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
-      protocol: Protocol.Curve,
-      id: subgraphPool.id,
-      tokens: subgraphPool.pool.coins.map((coin) => ({
-        id: coin,
-        symbol: "UNKNOWN",
-      })),
-      dailyVolumeUSD: subgraphPool.volumeUSD,
-    }));
-    await this.database.saveMany(pools, this.poolCollectionName);
+    const pools: DailyVolumeSnapshot[] = subgraphPools.map((subgraphPool) => {
+      const [pairAddress, daytime] = subgraphPool.id.split("-");
+      return {
+        id: subgraphPool.id,
+        pool: {
+          protocol: Protocol.Curve,
+          tokens: subgraphPool.pool.coins.map((coin) => ({
+            id: coin,
+            symbol: "UNKNOWN",
+            poolData: { basePool: subgraphPool.pool.basePool },
+          })),
+          id: pairAddress,
+        },
+        dayId: (parseInt(daytime) / DAY).toString(),
+        volumeUSD: subgraphPool.volumeUSD,
+      };
+    });
+    await this.database.saveMany(pools, this.collectionName.snapshot);
   }
+
+  async processAllPools() {}
 }

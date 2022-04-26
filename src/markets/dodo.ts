@@ -1,9 +1,12 @@
-import { gql, GraphQLClient } from "graphql-request";
-import Timeout from "await-timeout";
 import retry from "async-retry";
-import { Pool, Protocol } from "../types";
+import Timeout from "await-timeout";
+import { gql, GraphQLClient } from "graphql-request";
+
+import { DefaultCollectionName } from "../constants";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
+import { CollectionName, DailyVolumeSnapshot, Protocol } from "../types";
+
 import { MarketInterface } from "./market_interface";
 
 const DODO_SUBGRAPH_URL =
@@ -11,6 +14,7 @@ const DODO_SUBGRAPH_URL =
 
 export type RawSubgraphPool = {
   id: string;
+  pairAddress: string;
   baseToken: { id: string; symbol: string };
   quoteToken: { id: string; symbol: string };
   volumeUSD: string;
@@ -22,7 +26,10 @@ export class DodoIndexer implements MarketInterface {
   protected retries: number;
   protected timeout: number;
   protected client: GraphQLClient;
-  constructor(protected database: Database, protected collectionName: string) {
+  constructor(
+    protected database: Database,
+    protected collectionName: CollectionName = DefaultCollectionName
+  ) {
     this.subgraph_url = DODO_SUBGRAPH_URL;
     this.pageSize = 1000;
     this.client = new GraphQLClient(this.subgraph_url);
@@ -33,11 +40,9 @@ export class DodoIndexer implements MarketInterface {
   async fetchPoolsFromSubgraph() {
     const query = gql`
       query fetchTopPools($pageSize: Int!, $id: String) {
-        pairDayDatas(
-          first: $pageSize
-          where: { quoteReserve_gt: 0, id_gt: $id }
-        ) {
+        pairDayDatas(first: $pageSize, where: { id_gt: $id }) {
           id
+          pairAddress
           baseToken {
             id
             symbol
@@ -61,9 +66,9 @@ export class DodoIndexer implements MarketInterface {
         await retry(
           async () => {
             const poolsResult = await this.client.request<{
-              pairs: RawSubgraphPool[];
+              pairDayDatas: RawSubgraphPool[];
             }>(query, { pageSize: this.pageSize, id: lastId });
-            poolsPage = poolsResult.pairs;
+            poolsPage = poolsResult.pairDayDatas;
             pools = pools.concat(poolsPage);
             lastId = pools[pools.length - 1].id;
           },
@@ -76,6 +81,7 @@ export class DodoIndexer implements MarketInterface {
             },
           }
         );
+        logger.info(`processing ${pools.length}th pools`);
       } while (poolsPage.length > 0);
 
       return pools;
@@ -95,18 +101,20 @@ export class DodoIndexer implements MarketInterface {
     return allPools;
   }
 
-  async processAllPools() {
+  async processAllSnapshots() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
-    const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
-      protocol: Protocol.DODO,
+    const pools: DailyVolumeSnapshot[] = subgraphPools.map((subgraphPool) => ({
       id: subgraphPool.id,
-      tokens: [subgraphPool.baseToken, subgraphPool.quoteToken],
-      dailyVolumeUSD: subgraphPool.volumeUSD,
+      pool: {
+        protocol: Protocol.DODO,
+        id: subgraphPool.pairAddress,
+        tokens: [subgraphPool.baseToken, subgraphPool.quoteToken],
+      },
+      dayId: subgraphPool.id.split("-").reverse()[0],
+      volumeUSD: subgraphPool.volumeUSD,
     }));
-    await this.database.saveMany(pools, this.collectionName);
+    await this.database.saveMany(pools, this.collectionName.snapshot);
   }
 
-  async processAllTokens() {
-    throw new Error(`Unimplementation Error`);
-  }
+  async processAllPools() {}
 }

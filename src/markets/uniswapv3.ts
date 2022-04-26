@@ -1,8 +1,11 @@
-import { gql, GraphQLClient } from "graphql-request";
 import retry from "async-retry";
-import { Pool, Protocol } from "../types";
+import { gql, GraphQLClient } from "graphql-request";
+
+import { DefaultCollectionName } from "../constants";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
+import { CollectionName, DailyVolumeSnapshot, Protocol } from "../types";
+
 import { MarketInterface } from "./market_interface";
 
 const UNISWAPV3_SUBGRAPH_URL =
@@ -38,8 +41,7 @@ export class UniswapV3SubgraphIndexer implements MarketInterface {
   protected client: GraphQLClient;
   constructor(
     protected database: Database,
-    protected poolCollectionName: string,
-    protected tokenCollectionName: string
+    protected collectionName: CollectionName = DefaultCollectionName
   ) {
     this.subgraph_url = UNISWAPV3_SUBGRAPH_URL;
     this.pageSize = 1000;
@@ -102,18 +104,26 @@ export class UniswapV3SubgraphIndexer implements MarketInterface {
     return allPools;
   }
 
-  async processAllPools() {
+  async processAllSnapshots() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
-    const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
-      protocol: Protocol.UniswapV3,
-      id: subgraphPool.id,
-      tokens: [subgraphPool.pool.token0, subgraphPool.pool.token1],
-      dailyVolumeUSD: subgraphPool.volumeUSD,
-      poolData: {
-        feeTier: subgraphPool.pool.feeTier,
-        tvlUSD: subgraphPool.volumeUSD,
-      },
-    }));
-    await this.database.saveMany(pools, this.poolCollectionName);
+    const pools: DailyVolumeSnapshot[] = subgraphPools.map((subgraphPool) => {
+      const [pairAddress, dayId] = subgraphPool.id.split("-");
+      return {
+        pool: {
+          protocol: Protocol.UniswapV3,
+          tokens: [subgraphPool.pool.token0, subgraphPool.pool.token1],
+          id: pairAddress,
+          poolData: {
+            feeTier: subgraphPool.pool.feeTier,
+          },
+        },
+        id: subgraphPool.id,
+        volumeUSD: subgraphPool.volumeUSD,
+        dayId,
+      };
+    });
+    await this.database.saveMany(pools, this.collectionName.snapshot);
   }
+
+  async processAllPools() {}
 }
