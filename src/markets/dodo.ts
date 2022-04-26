@@ -4,7 +4,6 @@ import retry from "async-retry";
 import { Pool, Protocol } from "../types";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
-import { utils } from "ethers";
 import { MarketInterface } from "./market_interface";
 
 const DODO_SUBGRAPH_URL =
@@ -12,10 +11,9 @@ const DODO_SUBGRAPH_URL =
 
 export type RawSubgraphPool = {
   id: string;
-  baseToken: { id: string; decimals: string };
-  quoteToken: { id: string; decimals: string };
-  quoteReserve: string;
-  baseReserve: string;
+  baseToken: { id: string; symbol: string };
+  quoteToken: { id: string; symbol: string };
+  volumeUSD: string;
 };
 
 export class DodoIndexer implements MarketInterface {
@@ -35,18 +33,20 @@ export class DodoIndexer implements MarketInterface {
   async fetchPoolsFromSubgraph() {
     const query = gql`
       query fetchTopPools($pageSize: Int!, $id: String) {
-        pairs(first: $pageSize, where: { quoteReserve_gt: 0, id_gt: $id }) {
+        pairDayDatas(
+          first: $pageSize
+          where: { quoteReserve_gt: 0, id_gt: $id }
+        ) {
           id
           baseToken {
             id
-            decimals
+            symbol
           }
           quoteToken {
             id
-            decimals
+            symbol
           }
-          quoteReserve
-          baseReserve
+          volumeUSD
         }
       }
     `;
@@ -100,18 +100,8 @@ export class DodoIndexer implements MarketInterface {
     const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
       protocol: Protocol.DODO,
       id: subgraphPool.id,
-      tokens: [subgraphPool.baseToken.id, subgraphPool.quoteToken.id],
-      reserves: [
-        utils
-          .parseUnits(subgraphPool.baseReserve, subgraphPool.baseToken.decimals)
-          .toString(),
-        utils
-          .parseUnits(
-            subgraphPool.quoteReserve,
-            subgraphPool.quoteToken.decimals
-          )
-          .toString(),
-      ],
+      tokens: [subgraphPool.baseToken, subgraphPool.quoteToken],
+      dailyVolumeUSD: subgraphPool.volumeUSD,
     }));
     await this.database.saveMany(pools, this.collectionName);
   }

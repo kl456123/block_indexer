@@ -10,23 +10,25 @@ export enum Protocol {
   DODO,
 }
 
-export type Token = {
+export interface PricingToken extends Token {
   protocol: Protocol;
-  address: string;
-  symbol: string;
-  name?: string;
   decimals: number;
   derivedETH?: string;
   derivedUSD: string;
   timestamp?: string;
   block?: string;
-};
+}
 
-export type Pool = {
+export interface Token {
+  id: string;
+  symbol: string;
+  name?: string;
+}
+
+export interface Pool {
   protocol: Protocol;
   id: string;
-  tokens: string[];
-  reserves: string[];
-  reservesUSD?: string[];
+  tokens: Token[];
+  dailyVolumeUSD: string;
   poolData?: unknown;
-};
+}
