@@ -1,6 +1,7 @@
 import * as dotenv from "dotenv";
+import _ from "lodash";
 
-import { snapshotCollectionName } from "./constants";
+import { poolCollectionName, snapshotCollectionName } from "./constants";
 import { logger } from "./logging";
 import {
   BalancerV2SubgraphIndexer,
@@ -43,10 +44,26 @@ async function savePools(database: Database) {
 }
 
 async function updatePoolWithLatestVolume(database: Database) {
-  const snapshots = database.loadMany<DailyVolumeSnapshot>(
-    {},
-    snapshotCollectionName
-  );
+  const snapshots: DailyVolumeSnapshot[] =
+    await database.loadMany<DailyVolumeSnapshot>({}, snapshotCollectionName);
+  // get all pools using uniqby
+  const pools = _(snapshots)
+    .uniqBy((snapshot) => snapshot.pool.id)
+    .map((snapshot) => snapshot.pool)
+    .value();
+  const poolsWithLatestVolume = pools.map((pool) => {
+    // for each pool, update its volumeUSD with latest daily snapshot.
+    const latestSnapshot = _(snapshots)
+      .filter((snapshot) => snapshot.pool.id === pool.id)
+      .sortBy((snapshot) => snapshot.dayId)
+      .last() as DailyVolumeSnapshot;
+    return {
+      ...pool,
+      latestDailyVolumeUSD: latestSnapshot.volumeUSD,
+      latestDayId: latestSnapshot.dayId,
+    };
+  });
+  await database.saveMany(poolsWithLatestVolume, poolCollectionName);
 }
 
 async function main() {
@@ -58,6 +75,7 @@ async function main() {
   await database.initDB(process.env.DB_NAME as string);
 
   await savePools(database);
+  await updatePoolWithLatestVolume(database);
 
   await database.close();
 }
