@@ -22,3 +22,4 @@ export const DefaultCollectionName: CollectionName = {
 };
 
 export const DAY = 86400;
+export const blockNumberPerDay = 6381;
