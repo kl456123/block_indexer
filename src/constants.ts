@@ -14,6 +14,8 @@ export const cryptoPoolFactoryAddr =
 export const poolCollectionName = "pools";
 export const tokenCollectionName = "tokens";
 export const snapshotCollectionName = "snapshot";
+export const uniswapMulticallAddr =
+  "0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696";
 
 export const DefaultCollectionName: CollectionName = {
   pool: poolCollectionName,

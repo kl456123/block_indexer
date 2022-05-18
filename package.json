@@ -39,6 +39,7 @@
     "prettier": "prettier --write \"**/*.{js,json,md,ts}\"",
     "lint": "eslint --config ./.eslintrc.json --ignore-path ./.eslintignore --ext .js,.ts . --fix",
     "fix": "yarn prettier && yarn lint",
-    "start": "ts-node src/save_pools.ts"
+    "save:pools": "ts-node src/save_pools.ts",
+    "save:tokens": "ts-node src/save_tokens.ts"
   }
 }
