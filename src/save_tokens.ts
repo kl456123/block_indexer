@@ -32,7 +32,7 @@ async function saveTokens(
     .flatMap((pool) => pool.tokens)
     .uniqBy((token) => token.id.toLowerCase())
     .value();
-  console.log(tokens.length);
+  logger.info(`num of tokens: ${tokens.length}`);
   const newTokens: Token[] = [];
   let num = 0;
   const callsForDecimals: Multicall2.CallStruct[] = [];
@@ -41,10 +41,17 @@ async function saveTokens(
   for (let i = 0; i < tokens.length; ++i) {
     const token = tokens[i];
     const tokenContract = IERC20Metadata__factory.connect(token.id, provider);
+    // handle special cases first
     if (
       token.id.toLowerCase() === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
     ) {
       newTokens.push({ symbol: "ETH", decimals: 18, id: token.id });
+      continue;
+    }
+    if (
+      token.id.toLowerCase() === "0xbb9bc244d798123fde783fcc1c72d3bb8c189413"
+    ) {
+      newTokens.push({ symbol: "TheDAO", decimals: 16, id: token.id });
       continue;
     }
     callsForDecimals.push({
@@ -61,7 +68,6 @@ async function saveTokens(
     });
     num += 1;
     if (num % 100 === 0 || i === tokens.length - 1) {
-      // console.log(callsForDecimals.map(item=>item.target));
       const resultsForName = await multicallContract.callStatic.tryAggregate(
         false,
         callsForName
@@ -80,35 +86,41 @@ async function saveTokens(
       let decimals: number[] = [];
       try {
         names = resultsForName.map((encodedData) =>
-          encodedData.returnData.length === 66
-            ? ethers.utils.parseBytes32String(encodedData.returnData)
-            : encodedData.returnData.length === 2
-            ? ""
-            : tokenContract.interface.decodeFunctionResult(
-                "name",
-                encodedData.returnData
-              )
+          encodedData.success
+            ? encodedData.returnData.length === 66
+              ? ethers.utils.parseBytes32String(encodedData.returnData)
+              : encodedData.returnData.length === 2
+              ? ""
+              : tokenContract.interface.decodeFunctionResult(
+                  "name",
+                  encodedData.returnData
+                )
+            : ""
         ) as unknown as string[];
         symbols = resultsForSymbol.map((encodedData) =>
-          encodedData.returnData.length === 66
-            ? ethers.utils.parseBytes32String(encodedData.returnData)
-            : encodedData.returnData.length === 2
-            ? ""
-            : tokenContract.interface.decodeFunctionResult(
-                "symbol",
-                encodedData.returnData
-              )
+          encodedData.success
+            ? encodedData.returnData.length === 66
+              ? ethers.utils.parseBytes32String(encodedData.returnData)
+              : encodedData.returnData.length === 2
+              ? ""
+              : tokenContract.interface.decodeFunctionResult(
+                  "symbol",
+                  encodedData.returnData
+                )
+            : ""
         ) as unknown as string[];
         decimals = resultsForDecimals.map((encodedData) =>
           encodedData.success
-            ? tokenContract.interface.decodeFunctionResult(
-                "decimals",
-                encodedData.returnData
-              )
-            : 0
+            ? encodedData.returnData.length === 2
+              ? ""
+              : tokenContract.interface.decodeFunctionResult(
+                  "decimals",
+                  encodedData.returnData
+                )
+            : -1
         ) as unknown as number[];
       } catch (error: any) {
-        console.log("args: ", error.args, " errorArgs: ", error.errorArgs);
+        logger.error(`args: ${error.args}, errorArgs: ${error.errorArgs}`);
       }
       // ignore self-destruct token contract
       const tokensChunk = names
@@ -118,7 +130,10 @@ async function saveTokens(
           id: callsForName[ind].target,
           name: names[ind],
         }))
-        .filter((token) => token.symbol !== "");
+        .filter(
+          (token) =>
+            token.symbol !== "" && token.name !== "" && token.decimals !== -1
+        );
       newTokens.push(...tokensChunk);
 
       // empty calls array
@@ -131,10 +146,32 @@ async function saveTokens(
   await database.saveMany(newTokens, tokenCollectionName);
 }
 
+async function fetchSingleToken(
+  addr: string,
+  provider: ethers.providers.JsonRpcProvider
+) {
+  const multicallContract = Multicall2__factory.connect(
+    uniswapMulticallAddr,
+    provider
+  );
+  const tokenContract = IERC20Metadata__factory.connect(addr, provider);
+  const callsForName = [];
+  callsForName.push({
+    target: addr,
+    callData: tokenContract.interface.encodeFunctionData("name"),
+  });
+  const resultsForName = await multicallContract.callStatic.tryAggregate(
+    false,
+    callsForName
+  );
+  console.log(resultsForName);
+}
+
 async function main() {
   // const url = `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`;
   const url = "http://35.75.165.133:8545";
   const provider = new ethers.providers.JsonRpcProvider(url);
+  // await fetchSingleToken("0xbb9bc244d798123fde783fcc1c72d3bb8c189413", provider);
   const database = new Database(process.env.DB_CONN_STRING as string);
   await database.initDB(process.env.DB_NAME as string);
   await saveTokens(database, provider);

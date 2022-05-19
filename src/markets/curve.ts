@@ -75,7 +75,7 @@ export class CurveIndexer implements MarketInterface {
             },
           }
         );
-        logger.info(`processing ${pools.length}th pools`);
+        logger.info(`processing ${pools.length}th snapshots`);
       } while (poolsPage.length > 0);
 
       return pools;
@@ -96,8 +96,8 @@ export class CurveIndexer implements MarketInterface {
           tokens: subgraphPool.pool.coins.map((coin) => ({
             id: coin,
             symbol: "UNKNOWN",
-            poolData: { basePool: subgraphPool.pool.basePool },
           })),
+          poolData: { basePool: subgraphPool.pool.basePool },
           id: pairAddress,
         },
         dayId: (parseInt(daytime) / DAY).toString(),
