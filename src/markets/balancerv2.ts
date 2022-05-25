@@ -13,7 +13,7 @@ const BALANCERV2_SUBGRAPH_URL =
 
 export type RawSubgraphPool = {
   id: string;
-  pool: { tokens: { address: string; symbol: string }[] };
+  pool: { tokens: { address: string; symbol: string }[]; address: string };
   swapVolume: string;
 };
 
@@ -38,6 +38,7 @@ export class BalancerV2SubgraphIndexer implements MarketInterface {
         poolSnapshots(first: $pageSize, where: { id_gt: $id }) {
           id
           pool {
+            address
             tokens {
               address
               symbol
@@ -90,11 +91,12 @@ export class BalancerV2SubgraphIndexer implements MarketInterface {
         id: subgraphPool.id,
         pool: {
           protocol: Protocol.BalancerV2,
-          id: poolAddress,
+          id: subgraphPool.pool.address,
           tokens: subgraphPool.pool.tokens.map((token) => ({
             id: token.address,
             symbol: token.symbol,
           })),
+          poolData: { id: poolAddress },
         },
         volumeUSD: subgraphPool.swapVolume,
         dayId: (parseInt(daytime) / DAY).toString(),

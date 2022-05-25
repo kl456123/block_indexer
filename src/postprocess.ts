@@ -60,7 +60,7 @@ async function main() {
       });
       return {
         id: pool.id,
-        protocol: pool.protocol,
+        protocol: poolOnChain.protocol,
         poolData: poolOnChain.poolData,
         tokens: poolTokens,
         latestDailyVolumeUSD: pool.latestDailyVolumeUSD,
