@@ -1,13 +1,13 @@
-import {
-  UniswapV2Factory__factory,
-  UniswapV2Pair__factory,
-  UniswapV2Factory,
-} from "../typechain";
-import { logger } from "../logging";
 import retry from "async-retry";
 import { ethers } from "ethers";
-import { Token, Pool, Protocol } from "../types";
+import { logger } from "../logging";
 import { Database } from "../mongodb";
+import {
+  UniswapV2Factory,
+  UniswapV2Factory__factory,
+  UniswapV2Pair__factory,
+} from "../typechain";
+import { Pool, Protocol } from "../types";
 import { MarketInterface } from "./market_interface";
 
 export class UniswapV2Indexer implements MarketInterface {

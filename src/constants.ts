@@ -11,3 +11,11 @@ export const cryptoPoolFactoryAddr =
   "0xF18056Bbd320E96A48e3Fbf8bC061322531aac99";
 export const poolCollectionName = "pools";
 export const tokenCollectionName = "tokens";
+
+export const feedRegistryAddr = "0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf";
+
+export const chainLinkMap = {
+  ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+  BTC: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+  USD: "0x0000000000000000000000000000000000000348",
+};

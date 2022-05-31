@@ -2,3 +2,4 @@ node_modules
 src/typechain
 .env
 .DS_Store
+price.json

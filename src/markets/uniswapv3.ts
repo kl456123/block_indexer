@@ -1,10 +1,10 @@
-import { gql, GraphQLClient } from "graphql-request";
-import Timeout from "await-timeout";
 import retry from "async-retry";
-import { Pool, Protocol, Token } from "../types";
+import Timeout from "await-timeout";
+import BigNumber from "bignumber.js";
+import { gql, GraphQLClient } from "graphql-request";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
-import BigNumber from "bignumber.js";
+import { Pool, Protocol, Token } from "../types";
 import { MarketInterface } from "./market_interface";
 
 const UNISWAPV3_SUBGRAPH_URL =

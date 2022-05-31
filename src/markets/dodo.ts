@@ -1,10 +1,10 @@
-import { gql, GraphQLClient } from "graphql-request";
-import Timeout from "await-timeout";
 import retry from "async-retry";
-import { Pool, Protocol } from "../types";
+import Timeout from "await-timeout";
+import { utils } from "ethers";
+import { gql, GraphQLClient } from "graphql-request";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
-import { utils } from "ethers";
+import { Pool, Protocol } from "../types";
 import { MarketInterface } from "./market_interface";
 
 const DODO_SUBGRAPH_URL =

@@ -1,4 +1,4 @@
-import { Collection, MongoClient, Db, Filter } from "mongodb";
+import { Collection, Db, Filter, MongoClient } from "mongodb";
 import { logger } from "./logging";
 
 export class Database {

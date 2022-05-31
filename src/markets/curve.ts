@@ -1,24 +1,23 @@
-import { gql, GraphQLClient } from "graphql-request";
-import Timeout from "await-timeout";
 import retry from "async-retry";
-
+import Timeout from "await-timeout";
+import { Contract, ethers, utils } from "ethers";
+import { gql, GraphQLClient } from "graphql-request";
+import _ from "lodash";
+import { logger } from "../logging";
+import { Database } from "../mongodb";
 import {
-  CurveRegistry__factory,
-  CurveRegistry,
   CryptoPoolFactory,
   CryptoPoolFactory__factory,
   CryptoRegistry,
   CryptoRegistry__factory,
-  CurvePoolFactory__factory,
   CurvePoolFactory,
+  CurvePoolFactory__factory,
+  CurveRegistry,
+  CurveRegistry__factory,
 } from "../typechain";
-import { ethers, Contract, utils } from "ethers";
-import { logger } from "../logging";
 import { Pool, Protocol, Token } from "../types";
-import { Database } from "../mongodb";
-import _ from "lodash";
-import { MarketInterface } from "./market_interface";
 import { getTokensInfo } from "../utils";
+import { MarketInterface } from "./market_interface";
 
 export type CurveAddresses = {
   curveRegistryAddr: string;

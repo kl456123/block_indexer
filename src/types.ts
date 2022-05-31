@@ -10,6 +10,12 @@ export enum Protocol {
   DODO,
 }
 
+export type CommonToken = {
+  address: string;
+  symbol: string;
+  decimals: number;
+};
+
 export type Token = {
   protocol: Protocol;
   address: string;
@@ -29,4 +35,11 @@ export type Pool = {
   reserves: string[];
   reservesUSD?: string[];
   poolData?: unknown;
+};
+
+export type SwapEvent = {
+  amount: string;
+  fromToken: string;
+  toToken: string;
+  blockNumber: number;
 };

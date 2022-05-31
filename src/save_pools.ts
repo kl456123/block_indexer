@@ -1,8 +1,17 @@
-import { ethers } from "ethers";
 import { BigNumber } from "bignumber.js";
-
+import * as dotenv from "dotenv";
+import { ethers } from "ethers";
+import _ from "lodash";
 import {
-  UniswapV2Indexer,
+  cryptoPoolFactoryAddr,
+  curveRegistryAddr,
+  curveV2RegistryAddr,
+  poolCollectionName,
+  stablePoolFactoryAddr,
+  tokenCollectionName,
+} from "./constants";
+import { logger } from "./logging";
+import {
   BalancerV2SubgraphIndexer,
   CurveIndexer,
   DodoIndexer,
@@ -10,19 +19,8 @@ import {
   UniswapV3SubgraphIndexer,
 } from "./markets";
 import { Database } from "./mongodb";
-import {
-  curveRegistryAddr,
-  curveV2RegistryAddr,
-  stablePoolFactoryAddr,
-  cryptoPoolFactoryAddr,
-  poolCollectionName,
-  tokenCollectionName,
-} from "./constants";
-import { logger } from "./logging";
-import { Token, Pool, Protocol } from "./types";
-import _ from "lodash";
+import { Pool, Protocol, Token } from "./types";
 
-import * as dotenv from "dotenv";
 dotenv.config();
 
 async function getTokenPrice(database: Database) {

@@ -1,11 +1,11 @@
-import { gql, GraphQLClient } from "graphql-request";
-import Timeout from "await-timeout";
 import retry from "async-retry";
-import { Pool, Protocol, Token } from "../types";
+import Timeout from "await-timeout";
+import { BigNumber } from "bigNumber.js";
+import { gql, GraphQLClient } from "graphql-request";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
 import { PRICING_ASSETS, USD_STABLE_ASSETS } from "../tokens";
-import { BigNumber } from "bigNumber.js";
+import { Pool, Protocol, Token } from "../types";
 import { MarketInterface } from "./market_interface";
 
 const BALANCERV2_SUBGRAPH_URL =
