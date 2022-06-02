@@ -13,6 +13,8 @@ export const poolCollectionName = "pools";
 export const tokenCollectionName = "tokens";
 
 export const feedRegistryAddr = "0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf";
+export const day = 86400;
+export const secondsPerBlock = 13;
 
 export const chainLinkMap = {
   ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",

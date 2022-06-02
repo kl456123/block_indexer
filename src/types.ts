@@ -38,8 +38,11 @@ export type Pool = {
 };
 
 export type SwapEvent = {
-  amount: string;
+  amountIn: string;
+  amountOut: string;
   fromToken: string;
   toToken: string;
   blockNumber: number;
+  protocol: Protocol;
+  address: string;
 };
