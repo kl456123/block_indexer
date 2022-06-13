@@ -21,3 +21,6 @@ export const chainLinkMap = {
   BTC: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
   USD: "0x0000000000000000000000000000000000000348",
 };
+
+export const uniswapMulticallAddr =
+  "0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696";

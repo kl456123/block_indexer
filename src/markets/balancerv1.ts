@@ -1,29 +1,20 @@
 import retry from "async-retry";
 import Timeout from "await-timeout";
-import BigNumber from "bignumber.js";
 import { gql, GraphQLClient } from "graphql-request";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
-import { Pool, Protocol, Token } from "../types";
+import { Pool, Protocol } from "../types";
 import { MarketInterface } from "./market_interface";
 
-const UNISWAPV2_SUBGRAPH_URL =
-  "https://api.thegraph.com/subgraphs/name/ianlapham/uniswapv2";
+const BALANCER_SUBGRAPH_URL =
+  "https://api.thegraph.com/subgraphs/name/balancer-labs/balancer";
 
 export type RawSubgraphPool = {
   id: string;
-  token0: {
-    id: string;
-  };
-  token1: {
-    id: string;
-  };
-  reserve0: string;
-  reserve1: string;
-  reserveUSD: string;
+  tokens: Array<{ address: string; balance: string }>;
 };
 
-export class UniswapV2SubgraphIndexer implements MarketInterface {
+export class BalancerSubgraphIndexer implements MarketInterface {
   protected subgraph_url: string;
   protected pageSize: number;
   protected retries: number;
@@ -34,27 +25,22 @@ export class UniswapV2SubgraphIndexer implements MarketInterface {
     protected poolCollectionName: string,
     protected tokenCollectionName: string
   ) {
-    this.subgraph_url = UNISWAPV2_SUBGRAPH_URL;
+    this.subgraph_url = BALANCER_SUBGRAPH_URL;
     this.pageSize = 1000;
     this.client = new GraphQLClient(this.subgraph_url);
     this.retries = 3;
-    this.timeout = 3600000;
+    this.timeout = 36000;
   }
 
   async fetchPoolsFromSubgraph() {
     const query = gql`
-      query getPools($pageSize: Int!, $id: String) {
-        pairs(first: $pageSize, where: { id_gt: $id }) {
+      query fetchTopPools($pageSize: Int!, $id: String) {
+        pools(first: $pageSize, where: { id_gt: $id }) {
           id
-          token0 {
-            id
+          tokens {
+            address
+            balance
           }
-          token1 {
-            id
-          }
-          reserve0
-          reserve1
-          reserveUSD
         }
       }
     `;
@@ -69,9 +55,9 @@ export class UniswapV2SubgraphIndexer implements MarketInterface {
         await retry(
           async () => {
             const poolsResult = await this.client.request<{
-              pairs: RawSubgraphPool[];
+              pools: RawSubgraphPool[];
             }>(query, { pageSize: this.pageSize, id: lastId });
-            poolsPage = poolsResult.pairs;
+            poolsPage = poolsResult.pools;
             pools = pools.concat(poolsPage);
             lastId = pools[pools.length - 1].id;
           },
@@ -84,7 +70,6 @@ export class UniswapV2SubgraphIndexer implements MarketInterface {
             },
           }
         );
-        logger.info(`processing ${pools.length}th pools`);
       } while (poolsPage.length > 0);
 
       return pools;
@@ -107,11 +92,10 @@ export class UniswapV2SubgraphIndexer implements MarketInterface {
   async processAllPools() {
     const subgraphPools = await this.fetchPoolsFromSubgraph();
     const pools: Pool[] = subgraphPools.map((subgraphPool) => ({
-      protocol: Protocol.UniswapV2,
+      protocol: Protocol.Balancer,
       id: subgraphPool.id,
-      tokens: [subgraphPool.token0.id, subgraphPool.token1.id],
-      liquidity: [subgraphPool.reserve0, subgraphPool.reserve1],
-      poolData: { tvlUSD: subgraphPool.reserveUSD },
+      tokens: subgraphPool.tokens.map((token) => token.address),
+      liquidity: subgraphPool.tokens.map((token) => token.balance),
     }));
     await this.database.saveMany(pools, this.poolCollectionName);
   }

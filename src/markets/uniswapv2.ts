@@ -44,7 +44,7 @@ export class UniswapV2Indexer implements MarketInterface {
     const pool: Pool = {
       id: poolAddr,
       protocol: Protocol.UniswapV2,
-      reserves: [reserve0, reserve1],
+      liquidity: [reserve0, reserve1],
       tokens: [token0, token1],
     };
     if (save) {

@@ -8,6 +8,7 @@ export enum Protocol {
   Bancor,
   Kyber,
   DODO,
+  DODOV2,
 }
 
 export type CommonToken = {
@@ -17,23 +18,17 @@ export type CommonToken = {
 };
 
 export type Token = {
-  protocol: Protocol;
   address: string;
   symbol: string;
   name?: string;
   decimals: number;
-  derivedETH?: string;
-  derivedUSD: string;
-  timestamp?: string;
-  block?: string;
 };
 
 export type Pool = {
   protocol: Protocol;
   id: string;
   tokens: string[];
-  reserves: string[];
-  reservesUSD?: string[];
+  liquidity: string[];
   poolData?: unknown;
 };
 

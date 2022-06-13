@@ -1,7 +1,4 @@
-import retry from "async-retry";
-import Timeout from "await-timeout";
-import { Contract, ethers, utils } from "ethers";
-import { gql, GraphQLClient } from "graphql-request";
+import { Contract, ethers, utils, BigNumber } from "ethers";
 import _ from "lodash";
 import { logger } from "../logging";
 import { Database } from "../mongodb";
@@ -15,7 +12,7 @@ import {
   CurveRegistry,
   CurveRegistry__factory,
 } from "../typechain";
-import { Pool, Protocol, Token } from "../types";
+import { Pool, Protocol } from "../types";
 import { getTokensInfo } from "../utils";
 import { MarketInterface } from "./market_interface";
 
@@ -26,26 +23,12 @@ export type CurveAddresses = {
   cryptoPoolFactoryAddr: string;
 };
 
-export type RawSubgraphToken = {
-  id: string;
-  price: string;
-  timestamp: string;
-};
-
-const CURVE_SUBGRAPH_URL =
-  "https://api.thegraph.com/subgraphs/name/convex-community/volume-mainnet";
-
 export class CurveIndexer implements MarketInterface {
   protected stablePoolFactoryContract: CurvePoolFactory;
   protected cryptoPoolFactoryContract: CryptoPoolFactory;
   protected registryContract: CurveRegistry;
   protected registryV2Contract: CryptoRegistry;
 
-  protected subgraph_url: string;
-  protected pageSize: number;
-  protected retries: number;
-  protected timeout: number;
-  protected client: GraphQLClient;
   constructor(
     protected provider: ethers.providers.BaseProvider,
     protected database: Database,
@@ -74,12 +57,6 @@ export class CurveIndexer implements MarketInterface {
       curveV2RegistryAddr,
       provider
     );
-
-    this.subgraph_url = CURVE_SUBGRAPH_URL;
-    this.pageSize = 1000;
-    this.client = new GraphQLClient(this.subgraph_url);
-    this.retries = 3;
-    this.timeout = 360000;
   }
 
   async handleRegistryPoolAdded() {
@@ -105,7 +82,7 @@ export class CurveIndexer implements MarketInterface {
       const balancesBigNumber =
         await this.registryContract.get_underlying_balances(poolAddr);
       const tokensInfo = await getTokensInfo(tokens, this.provider);
-      const reserves = balancesBigNumber
+      const liquidity = balancesBigNumber
         .map((balanceBigNumber) => balanceBigNumber.toString())
         .slice(0, coinsNum)
         .map((reserve, ind) =>
@@ -115,13 +92,13 @@ export class CurveIndexer implements MarketInterface {
         id: poolAddr,
         protocol: Protocol.Curve,
         tokens,
-        reserves,
+        liquidity,
         poolData: { isMeta, isLending, wrappedToken },
       };
       pools.push(pool);
-      logger.info(pool);
     }
-    await this.database.saveMany(pools, this.poolCollectionName);
+    logger.info(`processing ${pools.length} pools from main registry`);
+    return pools;
   }
   async handleRegistryV2PoolAdded() {
     const poolsAddr = await this.handlePools(this.registryV2Contract);
@@ -139,7 +116,7 @@ export class CurveIndexer implements MarketInterface {
         poolAddr
       );
       const tokensInfo = await getTokensInfo(tokens, this.provider);
-      const reserves = balancesBigNumber
+      const liquidity = balancesBigNumber
         .map((balanceBigNumber) => balanceBigNumber.toString())
         .slice(0, coinsNum)
         .map((reserve, ind) =>
@@ -149,13 +126,13 @@ export class CurveIndexer implements MarketInterface {
         id: poolAddr,
         protocol: Protocol.CurveV2,
         tokens,
-        reserves,
+        liquidity,
         poolData: { isMeta: false }, // all crypto pools isn't metapool
       };
       pools.push(pool);
-      logger.info(pool);
     }
-    await this.database.saveMany(pools, this.poolCollectionName);
+    logger.info(`processing ${pools.length} pools from crypto registry`);
+    return pools;
   }
 
   async handleStablePoolDeployed() {
@@ -164,7 +141,7 @@ export class CurveIndexer implements MarketInterface {
     for (let i = 0; i < poolsAddr.length; ++i) {
       const poolAddr = poolsAddr[i];
       let tokens: string[];
-      let reserves: string[];
+      let liquidity: string[];
       const isMeta = await this.stablePoolFactoryContract.is_meta(poolAddr);
       try {
         if (isMeta) {
@@ -175,12 +152,18 @@ export class CurveIndexer implements MarketInterface {
           tokens = (
             await this.stablePoolFactoryContract.get_underlying_coins(poolAddr)
           ).slice(0, coinsNum);
-          const balancesBigNumber =
-            await this.stablePoolFactoryContract.get_underlying_balances(
-              poolAddr
-            );
+          let balancesBigNumber: BigNumber[];
+          // handle corner cases
+          try {
+            balancesBigNumber =
+              await this.stablePoolFactoryContract.get_underlying_balances(
+                poolAddr
+              );
+          } catch (error) {
+            balancesBigNumber = new Array(4).fill(BigNumber.from(0));
+          }
           const tokensInfo = await getTokensInfo(tokens, this.provider);
-          reserves = balancesBigNumber
+          liquidity = balancesBigNumber
             .map((balanceBigNumber) => balanceBigNumber.toString())
             .slice(0, coinsNum)
             .map((reserve, ind) =>
@@ -196,7 +179,7 @@ export class CurveIndexer implements MarketInterface {
           const tokensInfo = await getTokensInfo(tokens, this.provider);
           const balancesBigNumber =
             await this.stablePoolFactoryContract.get_balances(poolAddr);
-          reserves = balancesBigNumber
+          liquidity = balancesBigNumber
             .map((balanceBigNumber) => balanceBigNumber.toString())
             .slice(0, coinsNum)
             .map((reserve, ind) =>
@@ -204,20 +187,21 @@ export class CurveIndexer implements MarketInterface {
             );
         }
       } catch (error) {
-        logger.error(`address: ${poolAddr} isMeta: ${isMeta}`);
+        logger.error(`address: ${poolAddr} isMeta: ${isMeta}, error: ${error}`);
         continue;
       }
       const pool: Pool = {
         id: poolAddr,
         protocol: Protocol.Curve,
         tokens,
-        reserves,
+        liquidity,
         poolData: { isMeta }, // all crypto pools isn't metapool
       };
       pools.push(pool);
-      logger.info(pool);
     }
-    await this.database.saveMany(pools, this.poolCollectionName);
+    logger.info(`processing ${pools.length} pools from metapool factory`);
+
+    return pools;
   }
 
   async handleCryptoPoolDeployed() {
@@ -233,7 +217,7 @@ export class CurveIndexer implements MarketInterface {
       const balancesBigNumber =
         await this.cryptoPoolFactoryContract.get_balances(poolAddr);
       const tokensInfo = await getTokensInfo(tokens, this.provider);
-      const reserves = balancesBigNumber
+      const liquidity = balancesBigNumber
         .map((balanceBigNumber) => balanceBigNumber.toString())
         .slice(0, coinsNum)
         .map((reserve, ind) =>
@@ -243,122 +227,38 @@ export class CurveIndexer implements MarketInterface {
         id: poolAddr,
         protocol: Protocol.CurveV2,
         tokens,
-        reserves,
+        liquidity,
         poolData: { isMeta: false }, // all crypto pools isn't metapool
       };
       pools.push(pool);
-      logger.info(pool);
     }
-    await this.database.saveMany(pools, this.poolCollectionName);
+    logger.info(`processing ${pools.length} crypto pools from factory`);
+    return pools;
   }
 
   async handlePools(contract: Contract) {
     const poolCount = (await contract.pool_count()).toNumber();
     const poolPromises = [];
-    // logger.info(poolCount);
     for (let i = 0; i < poolCount; ++i) {
       const poolPromise = contract.pool_list(i);
       poolPromises.push(poolPromise);
-      // logger.info(pool);
     }
     const pools = await Promise.all(poolPromises);
     return pools;
   }
 
   async processAllPools() {
-    await Promise.all([
+    const allPools = await Promise.all([
       this.handleRegistryPoolAdded(),
       this.handleStablePoolDeployed(),
       this.handleRegistryV2PoolAdded(),
       this.handleCryptoPoolDeployed(),
     ]);
-  }
-
-  async fetchTokensFromSubgraph() {
-    const query = gql`
-      query getPools($pageSize: Int!, $id: String) {
-        tokenSnapshots(first: $pageSize, where: { id_gt: $id }) {
-          id
-          price
-          timestamp
-        }
-      }
-    `;
-    let allPools: RawSubgraphToken[] = [];
-    const timeout = new Timeout();
-    // get all pools using page mode
-    const getPools = async (): Promise<RawSubgraphToken[]> => {
-      let lastId = "";
-      let pools: RawSubgraphToken[] = [];
-      let poolsPage: RawSubgraphToken[] = [];
-      do {
-        await retry(
-          async () => {
-            const poolsResult = await this.client.request<{
-              tokenSnapshots: RawSubgraphToken[];
-            }>(query, { pageSize: this.pageSize, id: lastId });
-            poolsPage = poolsResult.tokenSnapshots;
-            pools = pools.concat(poolsPage);
-            lastId = pools[pools.length - 1].id;
-          },
-          {
-            retries: this.retries,
-            onRetry: (error, retry) => {
-              logger.error(
-                `Failed request for page of pools from subgraph due to ${error}. Retry attempt: ${retry}`
-              );
-            },
-          }
-        );
-        logger.info(`processing ${pools.length}th tokens`);
-      } while (poolsPage.length > 0);
-
-      return pools;
-    };
-
-    try {
-      const getPoolsPromise = getPools();
-      const timerPromise = timeout.set(this.timeout).then(() => {
-        throw new Error(
-          `Timed out getting pools from subgraph: ${this.timeout}`
-        );
-      });
-      allPools = await Promise.race([getPoolsPromise, timerPromise]);
-    } finally {
-      timeout.clear();
-    }
-    return allPools;
+    const pools = allPools.flat();
+    await this.database.saveMany(pools, this.poolCollectionName);
   }
 
   async processAllTokens() {
-    const subgraphTokens = await this.fetchTokensFromSubgraph();
-    logger.info(`num of tokens: ${subgraphTokens.length}`);
-    const tokens = subgraphTokens.map((subgraphToken) => {
-      return {
-        ...subgraphToken,
-        address: subgraphToken.id.slice(0, 20),
-      };
-    });
-    const tokenAddrs = _(tokens)
-      .map((token) => token.address)
-      .uniq()
-      .value();
-    const priceTokens = _(tokenAddrs)
-      .map((tokenAddr) =>
-        _(tokens)
-          .filter((token) => tokenAddr === token.address)
-          .sortBy((token) => token.timestamp)
-          .last()
-      )
-      .value() as (RawSubgraphToken & { address: string })[];
-    const pools: Token[] = priceTokens.map((priceToken) => ({
-      protocol: Protocol.Curve,
-      address: priceToken.id,
-      symbol: "",
-      decimals: 0,
-      derivedETH: "0",
-      derivedUSD: priceToken.price,
-    }));
-    await this.database.saveMany(pools, this.tokenCollectionName);
+    throw new Error(`Unimplementation Error`);
   }
 }
